@@ -8,32 +8,28 @@ import { queryClient } from './src/hooks/useQueryClient';
 import { supabase } from './src/services/supabase';
 import { useEffect } from 'react';
 import Constants from 'expo-constants';
+import { useAuthStore } from './src/stores/authStore';
 
 export default function App() {
+  const { checkSession } = useAuthStore();
+  
   useEffect(() => {
     const testSupabase = async () => {
       console.log('=== Supabase接続テスト開始 ===');
-      // 環境変数から直接URLを取得する
+      // 環境変数から直接URLを取得する（Must_Read.mdに従い修正）
       console.log('Supabase URL:', Constants.expoConfig?.extra?.supabaseUrl);
       
       try {
-        // 単純なバージョン情報取得でテスト
-        const { data, error } = await supabase.from('pg_catalog.pg_version').select('*').limit(1);
-        console.log('Supabase接続テスト:', error ? '失敗' : '成功');
+        // 単純な接続テスト
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        console.log('認証サービス接続テスト:', sessionError ? '失敗' : '成功');
         
-        if (error) {
-          console.error('Supabaseエラー:', error);
-          
-          // もっとシンプルな接続テスト
-          try {
-            const { error: serviceError } = await supabase.auth.getSession();
-            console.log('認証サービス接続テスト:', serviceError ? '失敗' : '成功');
-            if (serviceError) {
-              console.error('認証サービスエラー:', serviceError);
-            }
-          } catch (authError) {
-            console.error('認証サービス例外:', authError);
-          }
+        // ユーザーテーブルへの接続テスト
+        const { data: usersData, error: usersError } = await supabase.from('users').select('count').limit(1);
+        console.log('ユーザーテーブル接続テスト:', usersError ? '失敗' : '成功');
+        
+        if (sessionError || usersError) {
+          console.error('Supabaseエラー:', sessionError || usersError);
         } else {
           console.log('Supabase接続成功！');
         }
@@ -43,7 +39,11 @@ export default function App() {
       console.log('=== Supabase接続テスト終了 ===');
     };
     
+    // Supabase接続テスト実行
     testSupabase();
+    
+    // 認証状態を初期化
+    checkSession();
   }, []);
 
   return (

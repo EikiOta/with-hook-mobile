@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Image, Alert, Platform } from 'react-native';
-import { Button, Text, Surface } from 'react-native-paper';
+import { Text, Surface, ActivityIndicator } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../stores';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 import Constants from 'expo-constants';
+import OAuthButton from '../components/OAuthButton';
 
 // WebブラウザのリダイレクトURIの取得
 const redirectUri = makeRedirectUri({
@@ -15,7 +16,6 @@ const redirectUri = makeRedirectUri({
 
 const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
-  const navigation = useNavigation();
   const { checkSession } = useAuthStore();
 
   // Google認証
@@ -97,27 +97,23 @@ const LoginScreen = () => {
         <Text style={styles.subtitle}>with-hook</Text>
         
         <View style={styles.buttonContainer}>
-          <Button
-            mode="contained"
-            icon="google"
-            onPress={handleGoogleLogin}
-            disabled={loading}
-            style={[styles.button, styles.googleButton]}
-            labelStyle={styles.buttonLabel}
-          >
-            Googleでログイン
-          </Button>
-          
-          <Button
-            mode="contained"
-            icon="github"
-            onPress={handleGithubLogin}
-            disabled={loading}
-            style={[styles.button, styles.githubButton]}
-            labelStyle={styles.buttonLabel}
-          >
-            GitHubでログイン
-          </Button>
+          {loading ? (
+            <ActivityIndicator size="large" style={styles.loader} />
+          ) : (
+            <>
+              <OAuthButton 
+                provider="google" 
+                onPress={handleGoogleLogin} 
+                loading={loading} 
+              />
+              
+              <OAuthButton 
+                provider="github" 
+                onPress={handleGithubLogin} 
+                loading={loading} 
+              />
+            </>
+          )}
         </View>
         
         <Text style={styles.versionText}>
@@ -163,20 +159,8 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: 15,
   },
-  button: {
-    width: '100%',
-    borderRadius: 5,
-    paddingVertical: 8,
-  },
-  googleButton: {
-    backgroundColor: '#4285F4',
-  },
-  githubButton: {
-    backgroundColor: '#24292e',
-  },
-  buttonLabel: {
-    fontSize: 16,
-    paddingVertical: 4,
+  loader: {
+    marginVertical: 20,
   },
   versionText: {
     marginTop: 30,

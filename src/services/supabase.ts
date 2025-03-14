@@ -3,12 +3,18 @@ import * as SecureStore from 'expo-secure-store';
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { Database } from '../types/supabase';
+import NetInfo from '@react-native-community/netinfo';
 
 // 環境変数を読み込む
 const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl || '';
 const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey || '';
 
-
+// 開発モードの場合はコンソールに環境変数を表示
+if (__DEV__) {
+  console.log('Supabase URL:', supabaseUrl);
+  console.log('Supabase Anon Key:', supabaseAnonKey ? 'Set' : 'Not Set');
+}
 
 // AsyncStorageアダプタの作成
 const AsyncStorageAdapter = {
@@ -37,8 +43,7 @@ const SecureStorageAdapter = {
 };
 
 // Supabaseクライアントの作成
-// src/services/supabase.ts の修正部分
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: SecureStorageAdapter,
     autoRefreshToken: true,
@@ -50,7 +55,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       'Content-Type': 'application/json',
     },
   },
-  // localStorage オプションを削除
 });
 
 // セッション管理のヘルパー関数

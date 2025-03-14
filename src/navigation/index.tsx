@@ -1,10 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { getCurrentUser } from '../services/supabase';
 import { RootStackParamList, AuthStackParamList, MainStackParamList } from './types';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from '../screens/HomeScreen';
+import { useAuthStore } from '../stores/authStore';
+
+// 画面のインポート
+import LoginScreen from '../screens/LoginScreen';
+import RecoverAccountScreen from '../screens/RecoverAccountScreen';
 
 // スタックの作成
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -12,8 +16,6 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const MainStack = createNativeStackNavigator<MainStackParamList>();
 
 // 後で実装する画面コンポーネント用のプレースホルダー
-const LoginScreen = () => <View />;
-const RecoverAccountScreen = () => <View />;
 const MainTabsScreen = () => <HomeScreen />;
 const WordDetailScreen = () => <View />;
 const MeaningEditScreen = () => <View />;
@@ -65,23 +67,11 @@ const MainNavigator = () => {
 
 // ルートナビゲーター
 const AppNavigator = () => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [userSession, setUserSession] = useState<any>(null);
+  const { isLoading, isAuthenticated, isDeleted, checkSession } = useAuthStore();
 
   useEffect(() => {
-    // 認証状態の確認
-    const checkUser = async () => {
-      try {
-        const user = await getCurrentUser();
-        setUserSession(user);
-      } catch (error) {
-        console.error('Error checking auth state:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkUser();
+    // アプリ起動時に認証状態を確認
+    checkSession();
   }, []);
 
   if (isLoading) {
@@ -91,10 +81,17 @@ const AppNavigator = () => {
   return (
     <NavigationContainer>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        {userSession ? (
-          <RootStack.Screen name="Main" component={MainNavigator} />
+        {isAuthenticated ? (
+          isDeleted ? (
+            // 論理削除済みユーザーの場合
+            <RootStack.Screen name="Auth" component={AuthNavigator} initialParams={{ screen: 'RecoverAccount' }} />
+          ) : (
+            // 認証済みかつ有効なユーザーの場合
+            <RootStack.Screen name="Main" component={MainNavigator} />
+          )
         ) : (
-          <RootStack.Screen name="Auth" component={AuthNavigator} />
+          // 未認証ユーザーの場合
+          <RootStack.Screen name="Auth" component={AuthNavigator} initialParams={{ screen: 'Login' }} />
         )}
       </RootStack.Navigator>
     </NavigationContainer>
