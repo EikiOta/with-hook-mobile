@@ -1,52 +1,46 @@
-import { MMKV } from 'react-native-mmkv';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// MMKV インスタンスの作成
-export const storage = new MMKV({
-  id: 'with-hook-app',
-  encryptionKey: 'with-hook-secure-key',
-});
-
-// MMKVストレージのラッパー
+// AsyncStorageのラッパー
 export const appStorage = {
-  setItem: (key: string, value: any): boolean => {
+  setItem: async (key: string, value: any): Promise<boolean> => {
     try {
-      storage.set(key, JSON.stringify(value));
+      await AsyncStorage.setItem(key, JSON.stringify(value));
       return true;
     } catch (error) {
-      console.error('MMKV setItem error:', error);
+      console.error('AsyncStorage setItem error:', error);
       return false;
     }
   },
 
-  getItem: (key: string): any => {
+  getItem: async (key: string): Promise<any> => {
     try {
-      const value = storage.getString(key);
+      const value = await AsyncStorage.getItem(key);
       if (value) {
         return JSON.parse(value);
       }
       return null;
     } catch (error) {
-      console.error('MMKV getItem error:', error);
+      console.error('AsyncStorage getItem error:', error);
       return null;
     }
   },
 
-  removeItem: (key: string): boolean => {
+  removeItem: async (key: string): Promise<boolean> => {
     try {
-      storage.delete(key);
+      await AsyncStorage.removeItem(key);
       return true;
     } catch (error) {
-      console.error('MMKV removeItem error:', error);
+      console.error('AsyncStorage removeItem error:', error);
       return false;
     }
   },
 
-  clearAll: (): boolean => {
+  clearAll: async (): Promise<boolean> => {
     try {
-      storage.clearAll();
+      await AsyncStorage.clear();
       return true;
     } catch (error) {
-      console.error('MMKV clearAll error:', error);
+      console.error('AsyncStorage clearAll error:', error);
       return false;
     }
   }

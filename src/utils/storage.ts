@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { appStorage } from './mmkv';
 
 // ユーザー関連のストレージキー
@@ -8,15 +9,33 @@ const USER_PREFERENCES_KEY = 'WITH_HOOK_USER_PREFERENCES';
 
 // ユーザー情報の保存と取得
 export const saveUserData = async (userData: any) => {
-  return appStorage.setItem(USER_KEY, userData);
+  try {
+    await AsyncStorage.setItem(USER_KEY, JSON.stringify(userData));
+    return true;
+  } catch (error) {
+    console.error('AsyncStorage save error:', error);
+    return false;
+  }
 };
 
 export const getUserData = async () => {
-  return appStorage.getItem(USER_KEY);
+  try {
+    const data = await AsyncStorage.getItem(USER_KEY);
+    return data ? JSON.parse(data) : null;
+  } catch (error) {
+    console.error('AsyncStorage get error:', error);
+    return null;
+  }
 };
 
 export const removeUserData = async () => {
-  return appStorage.removeItem(USER_KEY);
+  try {
+    await AsyncStorage.removeItem(USER_KEY);
+    return true;
+  } catch (error) {
+    console.error('AsyncStorage remove error:', error);
+    return false;
+  }
 };
 
 // セキュアストレージへの保存（認証トークンなど）
@@ -64,9 +83,21 @@ export const removeAuthToken = async () => {
 
 // ユーザー設定の保存と取得
 export const saveUserPreferences = async (preferences: any) => {
-  return appStorage.setItem(USER_PREFERENCES_KEY, preferences);
+  try {
+    await AsyncStorage.setItem(USER_PREFERENCES_KEY, JSON.stringify(preferences));
+    return true;
+  } catch (error) {
+    console.error('AsyncStorage save preferences error:', error);
+    return false;
+  }
 };
 
 export const getUserPreferences = async () => {
-  return appStorage.getItem(USER_PREFERENCES_KEY);
+  try {
+    const data = await AsyncStorage.getItem(USER_PREFERENCES_KEY);
+    return data ? JSON.parse(data) : null;
+  } catch (error) {
+    console.error('AsyncStorage get preferences error:', error);
+    return null;
+  }
 };
