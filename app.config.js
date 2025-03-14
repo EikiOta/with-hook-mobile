@@ -1,4 +1,7 @@
 // app.config.js
+require('dotenv').config();
+
+
 module.exports = {
     name: 'with-hook-mobile',
     slug: 'with-hook-mobile',
