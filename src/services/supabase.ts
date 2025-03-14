@@ -16,36 +16,58 @@ if (__DEV__) {
   console.log('Supabase Anon Key:', supabaseAnonKey ? 'Set' : 'Not Set');
 }
 
-// AsyncStorageアダプタの作成
-const AsyncStorageAdapter = {
-  getItem: (key: string) => {
-    return AsyncStorage.getItem(key);
+// Expoでのセキュアストレージのラッパー
+// 認証情報をSecureStoreまたはAsyncStorageに保存するためのカスタムストレージ
+const CustomAuthStorage = {
+  getItem: async (key: string): Promise<string | null> => {
+    try {
+      // まずSecureStoreで試す
+      const value = await SecureStore.getItemAsync(key);
+      if (value !== null) return value;
+      
+      // SecureStoreで取得できなかった場合はAsyncStorageを使用
+      return await AsyncStorage.getItem(key);
+    } catch (error) {
+      console.error('Storage getItem error:', error);
+      return null;
+    }
   },
-  setItem: (key: string, value: string) => {
-    return AsyncStorage.setItem(key, value);
+  setItem: async (key: string, value: string): Promise<void> => {
+    try {
+      // SecureStoreとAsyncStorageの両方に保存を試みる
+      try {
+        await SecureStore.setItemAsync(key, value);
+      } catch (secureError) {
+        console.warn('SecureStore not available, falling back to AsyncStorage:', secureError);
+      }
+      
+      // バックアップとしてAsyncStorageに保存
+      await AsyncStorage.setItem(key, value);
+    } catch (error) {
+      console.error('Storage setItem error:', error);
+    }
   },
-  removeItem: (key: string) => {
-    return AsyncStorage.removeItem(key);
-  },
-};
-
-// 認証情報をSecureStoreに保存するためのカスタムストレージ
-const SecureStorageAdapter = {
-  getItem: (key: string) => {
-    return SecureStore.getItemAsync(key);
-  },
-  setItem: (key: string, value: string) => {
-    return SecureStore.setItemAsync(key, value);
-  },
-  removeItem: (key: string) => {
-    return SecureStore.deleteItemAsync(key);
+  removeItem: async (key: string): Promise<void> => {
+    try {
+      // SecureStoreから削除を試みる
+      try {
+        await SecureStore.deleteItemAsync(key);
+      } catch (secureError) {
+        console.warn('SecureStore remove error:', secureError);
+      }
+      
+      // AsyncStorageからも削除
+      await AsyncStorage.removeItem(key);
+    } catch (error) {
+      console.error('Storage removeItem error:', error);
+    }
   },
 };
 
 // Supabaseクライアントの作成
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: SecureStorageAdapter,
+    storage: CustomAuthStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

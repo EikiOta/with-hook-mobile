@@ -14,6 +14,24 @@ const redirectUri = makeRedirectUri({
   scheme: 'with-hook'
 });
 
+// 認証セッションの交換処理
+const exchangeCodeForSession = async (url: string) => {
+  try {
+    // URLからコードを抽出
+    const code = url.split('code=')[1]?.split('&')[0];
+    if (!code) throw new Error('認証コードが見つかりません');
+    
+    // コードをセッションに交換
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) throw error;
+    
+    return data.session;
+  } catch (error) {
+    console.error('セッション交換エラー:', error);
+    return null;
+  }
+};
+
 const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
   const { checkSession } = useAuthStore();
@@ -35,14 +53,22 @@ const LoginScreen = () => {
       if (error) throw error;
       if (!data.url) throw new Error('認証URLが取得できませんでした');
 
+      console.log('認証リダイレクトURI:', redirectUri);
+
       // 外部ブラウザでOAuth認証を実行
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
       
-      if (result.type === 'success') {
-        // URLからコードを取得
-        const url = result.url;
+      if (result.type === 'success' && result.url) {
+        console.log('認証成功、コールバックURL:', result.url);
+        
+        // 認証コードを交換してセッションを確立
+        await exchangeCodeForSession(result.url);
+        
         // セッションの確認
         await checkSession();
+      } else {
+        console.log('認証キャンセルまたは失敗:', result);
+        Alert.alert('認証キャンセル', '認証プロセスがキャンセルされました。');
       }
     } catch (error: any) {
       console.error('Google認証エラー:', error.message);
@@ -69,12 +95,22 @@ const LoginScreen = () => {
       if (error) throw error;
       if (!data.url) throw new Error('認証URLが取得できませんでした');
 
+      console.log('認証リダイレクトURI:', redirectUri);
+      
       // 外部ブラウザでOAuth認証を実行
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
       
-      if (result.type === 'success') {
+      if (result.type === 'success' && result.url) {
+        console.log('認証成功、コールバックURL:', result.url);
+        
+        // 認証コードを交換してセッションを確立
+        await exchangeCodeForSession(result.url);
+        
         // セッションの確認
         await checkSession();
+      } else {
+        console.log('認証キャンセルまたは失敗:', result);
+        Alert.alert('認証キャンセル', '認証プロセスがキャンセルされました。');
       }
     } catch (error: any) {
       console.error('GitHub認証エラー:', error.message);

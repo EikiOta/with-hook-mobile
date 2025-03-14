@@ -28,33 +28,59 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const authUser = await getCurrentUser();
       
       if (authUser) {
-        // ユーザーのSupabaseデータを取得
-        const { data, error } = await supabase
-          .from('users')
-          .select('*')
-          .eq('user_id', authUser.id)
-          .single();
-        
-        if (error) {
-          console.error('ユーザーデータ取得エラー:', error);
-          set({ user: null, isAuthenticated: false, isDeleted: false });
-          return;
+        try {
+          // ユーザーのSupabaseデータを取得
+          const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('user_id', authUser.id)
+            .single();
+          
+          if (error) {
+            console.error('ユーザーデータ取得エラー:', error);
+            set({ user: null, isAuthenticated: false, isDeleted: false });
+            return;
+          }
+          
+          // 論理削除されているかチェック
+          const isDeleted = data?.deleted_at !== null;
+          
+          // ユーザー情報を保存
+          try {
+            await saveUserData(data);
+          } catch (storageError) {
+            console.warn('ユーザーデータの保存エラー:', storageError);
+            // 保存エラーは致命的ではないので処理を続ける
+          }
+          
+          set({
+            user: data,
+            isAuthenticated: !!session,
+            isDeleted,
+          });
+        } catch (dbError) {
+          console.error('データベースアクセスエラー:', dbError);
+          // 最低限の認証情報だけでも設定
+          set({
+            user: { 
+              user_id: authUser.id, 
+              nickname: authUser.email || 'User', 
+              profile_image: '',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              deleted_at: null
+            },
+            isAuthenticated: !!session,
+            isDeleted: false
+          });
         }
-        
-        // 論理削除されているかチェック
-        const isDeleted = data?.deleted_at !== null;
-        
-        // ユーザー情報を保存
-        await saveUserData(data);
-        
-        set({
-          user: data,
-          isAuthenticated: !!session,
-          isDeleted,
-        });
       } else {
         // ユーザーデータをクリア
-        await removeUserData();
+        try {
+          await removeUserData();
+        } catch (clearError) {
+          console.warn('ユーザーデータ削除エラー:', clearError);
+        }
         set({ user: null, isAuthenticated: false, isDeleted: false });
       }
     } catch (error) {
@@ -69,7 +95,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: async () => {
     try {
       await supabase.auth.signOut();
-      await removeUserData();
+      try {
+        await removeUserData();
+      } catch (clearError) {
+        console.warn('ユーザーデータ削除エラー:', clearError);
+      }
       set({ user: null, isAuthenticated: false, isDeleted: false });
     } catch (error) {
       console.error('ログアウトエラー:', error);
