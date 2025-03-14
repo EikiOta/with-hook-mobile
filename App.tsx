@@ -1,24 +1,19 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { PaperProvider } from 'react-native-paper';
+import { QueryClientProvider } from '@tanstack/react-query';
+import AppNavigator from './src/navigation';
+import { theme } from './src/constants/theme';
+import { queryClient } from './src/hooks/useQueryClient';
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Hello World!</Text>
-    </View>
+    <QueryClientProvider client={queryClient}>
+      <PaperProvider theme={theme}>
+        <SafeAreaProvider>
+          <AppNavigator />
+        </SafeAreaProvider>
+      </PaperProvider>
+    </QueryClientProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  text: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#3498db',
-  },
-});
