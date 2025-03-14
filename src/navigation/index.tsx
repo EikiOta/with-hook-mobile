@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
 import { getCurrentUser } from '../services/supabase';
 import { RootStackParamList, AuthStackParamList, MainStackParamList } from './types';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 // スタックの作成
-const RootStack = createStackNavigator<RootStackParamList>();
-const AuthStack = createStackNavigator<AuthStackParamList>();
-const MainStack = createStackNavigator<MainStackParamList>();
+const RootStack = createNativeStackNavigator<RootStackParamList>();
+const AuthStack = createNativeStackNavigator<AuthStackParamList>();
+const MainStack = createNativeStackNavigator<MainStackParamList>();
 
 // 後で実装する画面コンポーネント用のプレースホルダー
 const LoginScreen = () => <View />;
