@@ -37,6 +37,7 @@ const SecureStorageAdapter = {
 };
 
 // Supabaseクライアントの作成
+// src/services/supabase.ts の修正部分
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: SecureStorageAdapter,
@@ -49,7 +50,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       'Content-Type': 'application/json',
     },
   },
-  localStorage: AsyncStorageAdapter,
+  // localStorage オプションを削除
 });
 
 // セッション管理のヘルパー関数

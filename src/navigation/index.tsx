@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { getCurrentUser } from '../services/supabase';
 import { RootStackParamList, AuthStackParamList, MainStackParamList } from './types';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import HomeScreen from '../screens/HomeScreen';
 
 // スタックの作成
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -13,10 +14,11 @@ const MainStack = createNativeStackNavigator<MainStackParamList>();
 // 後で実装する画面コンポーネント用のプレースホルダー
 const LoginScreen = () => <View />;
 const RecoverAccountScreen = () => <View />;
-const MainTabsScreen = () => <View />;
+const MainTabsScreen = () => <HomeScreen />;
 const WordDetailScreen = () => <View />;
 const MeaningEditScreen = () => <View />;
 const MemoryHookEditScreen = () => <View />;
+
 const LoadingScreen = () => (
   <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
     <ActivityIndicator size="large" color="#3498db" />
