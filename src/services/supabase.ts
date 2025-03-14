@@ -81,19 +81,35 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
 
 // セッション管理のヘルパー関数
 export const getSession = async () => {
-  const { data, error } = await supabase.auth.getSession();
-  if (error) {
-    console.error('Error getting session:', error.message);
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      console.error('Error getting session:', error.message);
+      return null;
+    }
+    return data.session;
+  } catch (error) {
+    console.error('Exception getting session:', error);
     return null;
   }
-  return data.session;
 };
 
 export const getCurrentUser = async () => {
-  const { data, error } = await supabase.auth.getUser();
-  if (error) {
-    console.error('Error getting user:', error.message);
+  try {
+    const session = await getSession();
+    if (!session) {
+      return null;
+    }
+    
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      // 未認証状態では通常のエラーなのでERRORレベルのログ出力は不要
+      if (__DEV__) console.log('User not authenticated:', error.message);
+      return null;
+    }
+    return data.user;
+  } catch (error) {
+    console.error('Exception getting user:', error);
     return null;
   }
-  return data.user;
 };

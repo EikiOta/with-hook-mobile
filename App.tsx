@@ -24,14 +24,18 @@ export default function App() {
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
         console.log('認証サービス接続テスト:', sessionError ? '失敗' : '成功');
         
-        // ユーザーテーブルへの接続テスト
-        const { data: usersData, error: usersError } = await supabase.from('users').select('count').limit(1);
-        console.log('ユーザーテーブル接続テスト:', usersError ? '失敗' : '成功');
-        
-        if (sessionError || usersError) {
-          console.error('Supabaseエラー:', sessionError || usersError);
-        } else {
-          console.log('Supabase接続成功！');
+        try {
+          // ユーザーテーブルへの接続テスト
+          const { data: usersData, error: usersError } = await supabase.from('users').select('count').limit(1);
+          console.log('ユーザーテーブル接続テスト:', usersError ? '失敗' : '成功');
+          
+          if (sessionError || usersError) {
+            console.error('Supabaseエラー:', sessionError || usersError);
+          } else {
+            console.log('Supabase接続成功！');
+          }
+        } catch (e) {
+          console.error('Supabaseテーブル接続エラー:', e);
         }
       } catch (e) {
         console.error('Supabaseテスト例外:', e);

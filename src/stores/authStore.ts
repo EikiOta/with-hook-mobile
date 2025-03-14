@@ -27,7 +27,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const session = await getSession();
       const authUser = await getCurrentUser();
       
-      if (authUser) {
+      if (authUser && session) {
         try {
           // ユーザーのSupabaseデータを取得
           const { data, error } = await supabase
