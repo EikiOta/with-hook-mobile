@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Image, Alert, Platform } from 'react-native';
+import { View, StyleSheet, Image, Alert } from 'react-native';
 import { Text, Surface, ActivityIndicator } from 'react-native-paper';
-import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
-import { useAuthStore } from '../stores';
+import { useAuthStore } from '../stores/authStore';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 import Constants from 'expo-constants';
@@ -36,14 +35,14 @@ const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
   const { checkSession } = useAuthStore();
 
-  // Google認証
-  const handleGoogleLogin = async () => {
+  // OAuth認証ハンドラー
+  const handleOAuth = async (provider: 'google' | 'github') => {
     try {
       setLoading(true);
       
       // Supabaseの認証URL作成
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider,
         options: {
           redirectTo: redirectUri,
           skipBrowserRedirect: true,
@@ -71,50 +70,8 @@ const LoginScreen = () => {
         Alert.alert('認証キャンセル', '認証プロセスがキャンセルされました。');
       }
     } catch (error: any) {
-      console.error('Google認証エラー:', error.message);
-      Alert.alert('エラー', 'Googleログインに失敗しました。時間をおいて再度お試しください。');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // GitHub認証
-  const handleGithubLogin = async () => {
-    try {
-      setLoading(true);
-      
-      // Supabaseの認証URL作成
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'github',
-        options: {
-          redirectTo: redirectUri,
-          skipBrowserRedirect: true,
-        }
-      });
-      
-      if (error) throw error;
-      if (!data.url) throw new Error('認証URLが取得できませんでした');
-
-      console.log('認証リダイレクトURI:', redirectUri);
-      
-      // 外部ブラウザでOAuth認証を実行
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
-      
-      if (result.type === 'success' && result.url) {
-        console.log('認証成功、コールバックURL:', result.url);
-        
-        // 認証コードを交換してセッションを確立
-        await exchangeCodeForSession(result.url);
-        
-        // セッションの確認
-        await checkSession();
-      } else {
-        console.log('認証キャンセルまたは失敗:', result);
-        Alert.alert('認証キャンセル', '認証プロセスがキャンセルされました。');
-      }
-    } catch (error: any) {
-      console.error('GitHub認証エラー:', error.message);
-      Alert.alert('エラー', 'GitHubログインに失敗しました。時間をおいて再度お試しください。');
+      console.error(`${provider}認証エラー:`, error.message);
+      Alert.alert('エラー', `${provider === 'google' ? 'Google' : 'GitHub'}ログインに失敗しました。時間をおいて再度お試しください。`);
     } finally {
       setLoading(false);
     }
@@ -139,13 +96,13 @@ const LoginScreen = () => {
             <>
               <OAuthButton 
                 provider="google" 
-                onPress={handleGoogleLogin} 
+                onPress={() => handleOAuth('google')} 
                 loading={loading} 
               />
               
               <OAuthButton 
                 provider="github" 
-                onPress={handleGithubLogin} 
+                onPress={() => handleOAuth('github')} 
                 loading={loading} 
               />
             </>
