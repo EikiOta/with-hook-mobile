@@ -1,14 +1,22 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
+import { persistQueryClient } from '@tanstack/react-query-persist-client';
 import AppNavigator from './src/navigation';
 import { theme } from './src/constants/theme';
-import { queryClient } from './src/hooks/useQueryClient';
+import { queryClient, asyncStoragePersister, setupMutationQueueProcessor } from './src/hooks/useQueryClient';
 import { supabase } from './src/services/supabase';
-import { useEffect } from 'react';
 import Constants from 'expo-constants';
 import { useAuthStore } from './src/stores/authStore';
+import OfflineSyncManager from './src/components/OfflineSyncManager';
+
+// React Queryの永続化設定
+persistQueryClient({
+  queryClient,
+  persister: asyncStoragePersister,
+  maxAge: 1000 * 60 * 60 * 24 * 7, // 1週間
+});
 
 export default function App() {
   const { checkSession } = useAuthStore();
@@ -48,13 +56,23 @@ export default function App() {
     
     // 認証状態を初期化
     checkSession();
+    
+    // オフラインミューテーションプロセッサをセットアップ
+    const unsubscribeMutationProcessor = setupMutationQueueProcessor();
+    
+    return () => {
+      // クリーンアップ
+      unsubscribeMutationProcessor();
+    };
   }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
       <PaperProvider theme={theme}>
         <SafeAreaProvider>
-          <AppNavigator />
+          <OfflineSyncManager>
+            <AppNavigator />
+          </OfflineSyncManager>
         </SafeAreaProvider>
       </PaperProvider>
     </QueryClientProvider>
