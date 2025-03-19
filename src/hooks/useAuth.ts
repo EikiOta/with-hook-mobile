@@ -31,16 +31,21 @@ export const useAuth = () => {
     };
   }, []);
 
-  // GitHub認証 - Expo Go 互換フロー
+  // GitHub認証 - 改善版
   const loginWithGithub = useCallback(async () => {
     try {
-      console.log('[AUTH] GitHub認証開始 (Expo Go 互換)');
+      console.log('[AUTH] GitHub認証開始');
+      
+      // アプリスキームを使用したリダイレクトURLを構築
+      const redirectUrl = Linking.createURL('login-callback');
+      console.log('[AUTH] 使用するリダイレクトURL:', redirectUrl);
       
       // ブラウザでログインを実行
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          // リダイレクトURLを指定しない（デフォルトでSupabaseのページに戻る）
+          redirectTo: redirectUrl, // 明示的にリダイレクトURLを指定
+          skipBrowserRedirect: true // ブラウザ自動リダイレクトをスキップして手動で処理
         }
       });
       
@@ -53,42 +58,98 @@ export const useAuth = () => {
         throw new Error('認証URLの取得に失敗しました');
       }
       
-      // ブラウザでOAuth認証を開始
-      await WebBrowser.openBrowserAsync(data.url);
+      console.log('[AUTH] 認証URLを開きます:', data.url);
       
-      // 注意: このフローでは認証後にアプリに自動的に戻らない
-      // ユーザーは手動でアプリに戻る必要がある
-      
-      // 一定時間後にセッションチェック
-      setTimeout(async () => {
-        console.log('[AUTH] セッションを確認します');
-        await checkSession();
-      }, 3000);
-      
-      Alert.alert(
-        '認証手順',
-        'ブラウザでGitHubログインを完了した後、このアプリに戻ってください。',
-        [{ text: 'OK', onPress: () => console.log('OK Pressed') }]
+      // ブラウザでOAuth認証を開始し、結果を待つ
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        redirectUrl,
+        {
+          showInRecents: true,
+          createTask: true
+        }
       );
       
-      return true;
+      console.log('[AUTH] 認証結果:', result.type);
+      
+      // 結果に基づいて処理
+      if (result.type === 'success') {
+        console.log('[AUTH] 認証成功、セッションを確認します');
+        
+        // URLを解析して認証情報を取得
+        try {
+          const callbackUrl = result.url;
+          console.log('[AUTH] コールバックURL:', callbackUrl);
+          
+          const url = new URL(callbackUrl);
+          
+          // フラグメントを解析（#を除去して処理）
+          if (url.hash) {
+            const hashParams = new URLSearchParams(url.hash.substring(1));
+            
+            // アクセストークンがフラグメントにある場合は手動で設定
+            if (hashParams.has('access_token') && hashParams.has('refresh_token')) {
+              console.log('[AUTH] トークンを検出、手動でセッションを設定します');
+              
+              try {
+                // セッションを手動で設定
+                const { error } = await supabase.auth.setSession({
+                  access_token: hashParams.get('access_token') || '',
+                  refresh_token: hashParams.get('refresh_token') || ''
+                });
+                
+                if (error) {
+                  console.error('[AUTH] セッション設定エラー:', error.message);
+                } else {
+                  console.log('[AUTH] セッションが正常に設定されました');
+                }
+              } catch (sessionError) {
+                console.error('[AUTH] セッション設定中の例外:', sessionError);
+              }
+            }
+          }
+        } catch (urlError) {
+          console.error('[AUTH] コールバックURL解析エラー:', urlError);
+        }
+        
+        // セッションチェック前に少し待機して認証処理が完了するのを待つ
+        console.log('[AUTH] セッション状態の更新を待っています...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // セッション状態を確認
+        console.log('[AUTH] セッション状態を確認します');
+        await checkSession();
+        
+        // セッション状態を再確認
+        console.log('[AUTH] 認証状態:', isAuthenticated ? '認証済み' : '未認証');
+        
+        return true;
+      } else {
+        console.log('[AUTH] 認証キャンセルまたは失敗:', result.type);
+        return false;
+      }
     } catch (error) {
       console.error('[AUTH] GitHub認証エラー:', error);
       Alert.alert('エラー', 'GitHubログインに失敗しました。時間をおいて再度お試しください。');
       return false;
     }
-  }, []);
+  }, [checkSession, isAuthenticated]);
 
-  // Google認証 - Expo Go 互換フロー
+  // Google認証 - 改善版
   const loginWithGoogle = useCallback(async () => {
     try {
-      console.log('[AUTH] Google認証開始 (Expo Go 互換)');
+      console.log('[AUTH] Google認証開始');
+      
+      // アプリスキームを使用したリダイレクトURLを構築
+      const redirectUrl = Linking.createURL('login-callback');
+      console.log('[AUTH] 使用するリダイレクトURL:', redirectUrl);
       
       // ブラウザでログインを実行
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          // リダイレクトURLを指定しない（デフォルトでSupabaseのページに戻る）
+          redirectTo: redirectUrl, // 明示的にリダイレクトURLを指定
+          skipBrowserRedirect: true // ブラウザ自動リダイレクトをスキップして手動で処理
         }
       });
       
@@ -101,28 +162,82 @@ export const useAuth = () => {
         throw new Error('認証URLの取得に失敗しました');
       }
       
-      // ブラウザでOAuth認証を開始
-      await WebBrowser.openBrowserAsync(data.url);
+      console.log('[AUTH] 認証URLを開きます:', data.url);
       
-      // 一定時間後にセッションチェック
-      setTimeout(async () => {
-        console.log('[AUTH] セッションを確認します');
-        await checkSession();
-      }, 3000);
-      
-      Alert.alert(
-        '認証手順',
-        'ブラウザでGoogleログインを完了した後、このアプリに戻ってください。',
-        [{ text: 'OK', onPress: () => console.log('OK Pressed') }]
+      // ブラウザでOAuth認証を開始し、結果を待つ
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        redirectUrl,
+        {
+          showInRecents: true,
+          createTask: true
+        }
       );
       
-      return true;
+      console.log('[AUTH] 認証結果:', result.type);
+      
+      // 結果に基づいて処理
+      if (result.type === 'success') {
+        console.log('[AUTH] 認証成功、セッションを確認します');
+        
+        // URLを解析して認証情報を取得
+        try {
+          const callbackUrl = result.url;
+          console.log('[AUTH] コールバックURL:', callbackUrl);
+          
+          const url = new URL(callbackUrl);
+          
+          // フラグメントを解析（#を除去して処理）
+          if (url.hash) {
+            const hashParams = new URLSearchParams(url.hash.substring(1));
+            
+            // アクセストークンがフラグメントにある場合は手動で設定
+            if (hashParams.has('access_token') && hashParams.has('refresh_token')) {
+              console.log('[AUTH] トークンを検出、手動でセッションを設定します');
+              
+              try {
+                // セッションを手動で設定
+                const { error } = await supabase.auth.setSession({
+                  access_token: hashParams.get('access_token') || '',
+                  refresh_token: hashParams.get('refresh_token') || ''
+                });
+                
+                if (error) {
+                  console.error('[AUTH] セッション設定エラー:', error.message);
+                } else {
+                  console.log('[AUTH] セッションが正常に設定されました');
+                }
+              } catch (sessionError) {
+                console.error('[AUTH] セッション設定中の例外:', sessionError);
+              }
+            }
+          }
+        } catch (urlError) {
+          console.error('[AUTH] コールバックURL解析エラー:', urlError);
+        }
+        
+        // セッションチェック前に少し待機して認証処理が完了するのを待つ
+        console.log('[AUTH] セッション状態の更新を待っています...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // セッション状態を確認
+        console.log('[AUTH] セッション状態を確認します');
+        await checkSession();
+        
+        // セッション状態を再確認
+        console.log('[AUTH] 認証状態:', isAuthenticated ? '認証済み' : '未認証');
+        
+        return true;
+      } else {
+        console.log('[AUTH] 認証キャンセルまたは失敗:', result.type);
+        return false;
+      }
     } catch (error) {
       console.error('[AUTH] Google認証エラー:', error);
       Alert.alert('エラー', 'Googleログインに失敗しました。時間をおいて再度お試しください。');
       return false;
     }
-  }, []);
+  }, [checkSession, isAuthenticated]);
 
   // デバッグ情報取得
   const getDebugInfo = useCallback(async () => {
