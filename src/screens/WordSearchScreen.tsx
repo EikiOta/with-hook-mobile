@@ -1,9 +1,9 @@
 // src/screens/WordSearchScreen.tsx
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput as RNTextInput } from 'react-native';
-import { Searchbar, Card, Chip, Button, ActivityIndicator, Divider } from 'react-native-paper';
+import React, { useState } from 'react';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
+import { Searchbar, Card, Chip, Button, ActivityIndicator } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
-import { useWordSearch } from '../hooks/api/useWordQuery';
+import { useWordSearch } from '../hooks/api';
 
 const WordSearchScreen = () => {
   const navigation = useNavigation();

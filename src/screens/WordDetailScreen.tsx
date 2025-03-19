@@ -1,12 +1,17 @@
 // src/screens/WordDetailScreen.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Divider, Button, Chip, ActivityIndicator, Card } from 'react-native-paper';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { useExternalDictionary } from '../hooks/api/useWordQuery';
-import { useMeaningsByWord, useCreateMeaning } from '../hooks/api/useMeaningQuery';
-import { useMemoryHooksByWord, useCreateMemoryHook } from '../hooks/api/useMemoryHookQuery';
-import { useSaveToWordbook, useCheckWordInWordbook } from '../hooks/api/useUserWordQuery';
+import { 
+  useExternalDictionary, 
+  useMeaningsByWordText, 
+  useMemoryHooksByWordText, 
+  useCreateMeaning, 
+  useCreateMemoryHook,
+  useSaveToWordbook, 
+  useCheckWordInWordbook 
+} from '../hooks/api';
 import MeaningForm from '../components/MeaningForm';
 import MemoryHookForm from '../components/MemoryHookForm';
 import { useAuthStore } from '../stores/authStore';
@@ -25,8 +30,8 @@ const WordDetailScreen = () => {
   
   // データ取得フック
   const { data: dictionaryData, isLoading: isDictLoading } = useExternalDictionary(word);
-  const { data: meaningData, isLoading: isMeaningLoading } = useMeaningsByWord(word);
-  const { data: hooksData, isLoading: isHooksLoading } = useMemoryHooksByWord(word);
+  const { data: meaningData, isLoading: isMeaningLoading, refetch: refetchMeanings } = useMeaningsByWordText(word);
+  const { data: hooksData, isLoading: isHooksLoading, refetch: refetchHooks } = useMemoryHooksByWordText(word);
   const { data: wordInWordbook, isLoading: isCheckingWordbook } = useCheckWordInWordbook(word);
   
   // ミューテーションフック
@@ -43,8 +48,10 @@ const WordDetailScreen = () => {
         isPublic
       });
       setShowMeaningForm(false);
+      refetchMeanings();
     } catch (error) {
       console.error('意味作成エラー:', error);
+      Alert.alert('エラー', error.message || '意味の作成に失敗しました');
     }
   };
   
@@ -57,8 +64,10 @@ const WordDetailScreen = () => {
         isPublic
       });
       setShowHookForm(false);
+      refetchHooks();
     } catch (error) {
       console.error('記憶hook作成エラー:', error);
+      Alert.alert('エラー', error.message || '記憶hookの作成に失敗しました');
     }
   };
   
@@ -88,7 +97,7 @@ const WordDetailScreen = () => {
       );
     } catch (error) {
       console.error('単語帳保存エラー:', error);
-      Alert.alert('エラー', '保存に失敗しました');
+      Alert.alert('エラー', error.message || '保存に失敗しました');
     }
   };
   

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { Card, Button, ActivityIndicator, Divider, IconButton, Chip } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
-import { useMyWordbook, useRemoveFromWordbook } from '../hooks/api/useUserWordQuery';
+import { useMyWordbook, useRemoveFromWordbook } from '../hooks/api';
 import { useAuthStore } from '../stores/authStore';
 import { isDeleted } from '../utils/validation';
 
