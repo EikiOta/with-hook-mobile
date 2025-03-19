@@ -3,6 +3,9 @@ import { User } from '../types';
 import { getSession, getCurrentUser, supabase } from '../services/supabase';
 import { saveUserData, removeUserData } from '../utils/storage';
 
+// すでにセッションチェックが完了したかどうかを追跡
+let checkSessionCompleted = false;
+
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
@@ -22,7 +25,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   
   // セッション状態を確認
   checkSession: async () => {
-    set({ isLoading: true });
+    console.log("checkSession called, already completed:", checkSessionCompleted);
+    
+    // すでに一度チェックしていれば、ロード中にはしない
+    if (!checkSessionCompleted) {
+      set({ isLoading: true });
+    }
+    
     try {
       const session = await getSession();
       const authUser = await getCurrentUser();
@@ -38,7 +47,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           
           if (error) {
             console.error('ユーザーデータ取得エラー:', error);
-            set({ user: null, isAuthenticated: false, isDeleted: false });
+            set({ user: null, isAuthenticated: false, isDeleted: false, isLoading: false });
+            checkSessionCompleted = true;
             return;
           }
           
@@ -57,6 +67,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             user: data,
             isAuthenticated: !!session,
             isDeleted,
+            isLoading: false
           });
         } catch (dbError) {
           console.error('データベースアクセスエラー:', dbError);
@@ -71,7 +82,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               deleted_at: null
             },
             isAuthenticated: !!session,
-            isDeleted: false
+            isDeleted: false,
+            isLoading: false
           });
         }
       } else {
@@ -81,14 +93,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         } catch (clearError) {
           console.warn('ユーザーデータ削除エラー:', clearError);
         }
-        set({ user: null, isAuthenticated: false, isDeleted: false });
+        set({ user: null, isAuthenticated: false, isDeleted: false, isLoading: false });
       }
     } catch (error) {
       console.error('セッション確認エラー:', error);
-      set({ user: null, isAuthenticated: false, isDeleted: false });
-    } finally {
-      set({ isLoading: false });
+      set({ user: null, isAuthenticated: false, isDeleted: false, isLoading: false });
     }
+    
+    // セッションチェック完了のマーク
+    checkSessionCompleted = true;
   },
   
   // ログアウト

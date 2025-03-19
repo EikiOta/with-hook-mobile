@@ -1,40 +1,23 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { supabase, getSession, getCurrentUser } from '../services/supabase';
+import { useEffect, useRef, useCallback } from 'react';
+import { supabase } from '../services/supabase';
 import { useAuthStore } from '../stores/authStore';
 import { Alert, Platform } from 'react-native';
-import { makeRedirectUri } from 'expo-auth-session';
-import Constants from 'expo-constants';
-import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-
-// アプリスキームを取得
-const APP_SCHEME = Constants.expoConfig?.scheme || 'with-hook';
-
-// リダイレクトURIを直接ここで生成（副作用なし）
-const generateRedirectUri = () => {
-  return `${APP_SCHEME}://login-callback`;
-};
+import * as Linking from 'expo-linking';
 
 export const useAuth = () => {
   // グローバルストアから必要な状態のみ取得
   const { user, isAuthenticated, isLoading, isDeleted, checkSession } = useAuthStore();
   
   // 初期化状態追跡
-  const isInitialized = useRef(false);
-  
-  // リダイレクトURI
-  const redirectUri = useRef(generateRedirectUri());
+  const initialized = useRef(false);
   
   // 初期化 - 一度だけ実行
   useEffect(() => {
-    if (isInitialized.current) return;
-    isInitialized.current = true;
+    if (initialized.current) return;
+    initialized.current = true;
     
-    // 認証状態チェック
-    console.log('[AUTH] 初期化時のセッションチェック');
-    checkSession();
-    
-    // Auth状態変更リスナー
+    // 認証状態の変化を監視
     const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
       if (['SIGNED_IN', 'SIGNED_OUT'].includes(event)) {
         console.log('[AUTH] 認証状態変更:', event);
@@ -42,108 +25,101 @@ export const useAuth = () => {
       }
     });
     
-    // ディープリンクリスナー
-    const deepLinkListener = Linking.addEventListener('url', ({ url }) => {
-      console.log('[AUTH] ディープリンク検知:', url);
-      if (url.includes('code=')) {
-        handleAuthCallback(url);
-      }
-    });
-    
+    // クリーンアップ
     return () => {
       authListener.subscription.unsubscribe();
-      deepLinkListener.remove();
     };
-  }, []); // 空の依存配列 - 初回マウント時のみ実行
+  }, []);
 
-  // 認証コールバック処理
-  const handleAuthCallback = async (url) => {
+  // GitHub認証 - Expo Go 互換フロー
+  const loginWithGithub = useCallback(async () => {
     try {
-      console.log('[AUTH] コールバック処理開始');
+      console.log('[AUTH] GitHub認証開始 (Expo Go 互換)');
       
-      const codeMatch = url.match(/code=([^&]+)/);
-      if (!codeMatch) return false;
-      
-      const code = codeMatch[1];
-      console.log('[AUTH] 認証コード取得成功');
-      
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      
-      if (error) {
-        console.error('[AUTH] セッション交換エラー:', error.message);
-        return false;
-      }
-      
-      console.log('[AUTH] セッション交換成功');
-      checkSession();
-      return true;
-      
-    } catch (error) {
-      console.error('[AUTH] コールバック処理エラー:', error);
-      return false;
-    }
-  };
-
-  // Google認証
-  const loginWithGoogle = useCallback(async () => {
-    try {
-      const uri = redirectUri.current;
-      console.log('[AUTH] Googleログイン開始:', uri);
-      
+      // ブラウザでログインを実行
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider: 'github',
         options: {
-          redirectTo: uri,
-          skipBrowserRedirect: true,
+          // リダイレクトURLを指定しない（デフォルトでSupabaseのページに戻る）
         }
       });
       
-      if (error || !data.url) {
-        throw new Error(error?.message || 'URLの取得に失敗しました');
+      if (error) {
+        console.error('[AUTH] 認証エラー:', error.message);
+        throw error;
       }
       
-      const result = await WebBrowser.openAuthSessionAsync(data.url, uri);
-      
-      if (result.type === 'success' && result.url) {
-        return await handleAuthCallback(result.url);
+      if (!data.url) {
+        throw new Error('認証URLの取得に失敗しました');
       }
       
-      return false;
+      // ブラウザでOAuth認証を開始
+      await WebBrowser.openBrowserAsync(data.url);
+      
+      // 注意: このフローでは認証後にアプリに自動的に戻らない
+      // ユーザーは手動でアプリに戻る必要がある
+      
+      // 一定時間後にセッションチェック
+      setTimeout(async () => {
+        console.log('[AUTH] セッションを確認します');
+        await checkSession();
+      }, 3000);
+      
+      Alert.alert(
+        '認証手順',
+        'ブラウザでGitHubログインを完了した後、このアプリに戻ってください。',
+        [{ text: 'OK', onPress: () => console.log('OK Pressed') }]
+      );
+      
+      return true;
     } catch (error) {
-      console.error('[AUTH] Googleログインエラー:', error);
-      Alert.alert('エラー', 'Googleログインに失敗しました');
+      console.error('[AUTH] GitHub認証エラー:', error);
+      Alert.alert('エラー', 'GitHubログインに失敗しました。時間をおいて再度お試しください。');
       return false;
     }
   }, []);
 
-  // GitHub認証
-  const loginWithGithub = useCallback(async () => {
+  // Google認証 - Expo Go 互換フロー
+  const loginWithGoogle = useCallback(async () => {
     try {
-      const uri = redirectUri.current;
-      console.log('[AUTH] GitHubログイン開始:', uri);
+      console.log('[AUTH] Google認証開始 (Expo Go 互換)');
       
+      // ブラウザでログインを実行
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'github',
+        provider: 'google',
         options: {
-          redirectTo: uri,
-          skipBrowserRedirect: true,
+          // リダイレクトURLを指定しない（デフォルトでSupabaseのページに戻る）
         }
       });
       
-      if (error || !data.url) {
-        throw new Error(error?.message || 'URLの取得に失敗しました');
+      if (error) {
+        console.error('[AUTH] 認証エラー:', error.message);
+        throw error;
       }
       
-      const result = await WebBrowser.openAuthSessionAsync(data.url, uri);
-      
-      if (result.type === 'success' && result.url) {
-        return await handleAuthCallback(result.url);
+      if (!data.url) {
+        throw new Error('認証URLの取得に失敗しました');
       }
       
-      return false;
+      // ブラウザでOAuth認証を開始
+      await WebBrowser.openBrowserAsync(data.url);
+      
+      // 一定時間後にセッションチェック
+      setTimeout(async () => {
+        console.log('[AUTH] セッションを確認します');
+        await checkSession();
+      }, 3000);
+      
+      Alert.alert(
+        '認証手順',
+        'ブラウザでGoogleログインを完了した後、このアプリに戻ってください。',
+        [{ text: 'OK', onPress: () => console.log('OK Pressed') }]
+      );
+      
+      return true;
     } catch (error) {
-      console.error('[AUTH] GitHubログインエラー:', error);
-      Alert.alert('エラー', 'GitHubログインに失敗しました');
+      console.error('[AUTH] Google認証エラー:', error);
+      Alert.alert('エラー', 'Googleログインに失敗しました。時間をおいて再度お試しください。');
       return false;
     }
   }, []);
@@ -158,7 +134,6 @@ export const useAuth = () => {
           isDeleted,
           hasUser: !!user
         },
-        redirectUri: redirectUri.current,
         platform: Platform.OS,
         isDev: __DEV__
       };
