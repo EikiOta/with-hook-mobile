@@ -245,7 +245,7 @@ export const wordService = {
         .from('words')
         .select('*')
         .eq('word', sanitizedWord)
-        .maybeSingle(); // 変更: single() → maybeSingle()
+        .maybeSingle();
       
       if (searchError) {
         console.error('単語検索エラー:', searchError);
@@ -254,6 +254,7 @@ export const wordService = {
       
       // 既存の単語が見つかった場合はそれを返す
       if (existingWord) {
+        console.log(`単語「${sanitizedWord}」が見つかりました (ID: ${existingWord.word_id})`);
         return existingWord;
       }
       
@@ -439,13 +440,25 @@ export const meaningService = {
     try {
       // まず単語があるか確認し、なければ作成
       const word = await wordService.findOrCreateWord(wordText);
-      if (!word) throw new Error('単語の作成に失敗しました');
+      if (!word) {
+        console.error(`単語の作成に失敗しました: ${wordText}`);
+        throw new Error('単語の作成に失敗しました');
+      }
+      
+      // 作成された単語のIDを確認
+      console.log(`意味作成のための単語ID: ${word.word_id}`);
+      
+      // word_idが存在することを確認
+      if (!word.word_id) {
+        console.error('単語IDが取得できませんでした');
+        throw new Error('単語IDが取得できません');
+      }
       
       // 意味を作成
       return await meaningService.createMeaning(userId, word.word_id, meaningText, isPublic);
     } catch (error) {
       console.error('単語テキストによる意味作成エラー:', error);
-      return null;
+      throw error; // エラーを再スローして上位で捕捉できるようにする
     }
   },
   
@@ -613,13 +626,25 @@ export const memoryHookService = {
     try {
       // まず単語があるか確認し、なければ作成
       const word = await wordService.findOrCreateWord(wordText);
-      if (!word) throw new Error('単語の作成に失敗しました');
+      if (!word) {
+        console.error(`単語の作成に失敗しました: ${wordText}`);
+        throw new Error('単語の作成に失敗しました');
+      }
+      
+      // 作成された単語のIDを確認
+      console.log(`記憶Hook作成のための単語ID: ${word.word_id}`);
+      
+      // word_idが存在することを確認
+      if (!word.word_id) {
+        console.error('単語IDが取得できませんでした');
+        throw new Error('単語IDが取得できません');
+      }
       
       // 記憶Hookを作成
       return await memoryHookService.createMemoryHook(userId, word.word_id, hookText, isPublic);
     } catch (error) {
       console.error('単語テキストによる記憶Hook作成エラー:', error);
-      return null;
+      throw error; // エラーを再スローして上位で捕捉できるようにする
     }
   },
   

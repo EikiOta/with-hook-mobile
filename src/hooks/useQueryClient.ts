@@ -117,6 +117,17 @@ export const processMutationQueue = async () => {
             success = !!meaning;
             break;
             
+          case 'createMeaningByWordText':
+            // 単語テキストから意味を作成
+            const meaningByText = await meaningService.createMeaningByWordText(
+              mutation.data.userId,
+              mutation.data.wordText,
+              mutation.data.meaningText,
+              mutation.data.isPublic
+            );
+            success = !!meaningByText;
+            break;
+            
           case 'updateMeaning':
             success = await meaningService.updateMeaning(
               mutation.data.meaningId,
@@ -143,6 +154,17 @@ export const processMutationQueue = async () => {
             success = !!hook;
             break;
             
+          case 'createMemoryHookByWordText':
+            // 単語テキストから記憶hookを作成
+            const hookByText = await memoryHookService.createMemoryHookByWordText(
+              mutation.data.userId,
+              mutation.data.wordText,
+              mutation.data.hookText,
+              mutation.data.isPublic
+            );
+            success = !!hookByText;
+            break;
+            
           case 'updateMemoryHook':
             success = await memoryHookService.updateMemoryHook(
               mutation.data.hookId,
@@ -167,6 +189,17 @@ export const processMutationQueue = async () => {
               mutation.data.memoryHookId
             );
             success = !!userWord;
+            break;
+            
+          case 'saveToWordbookByText':
+            // 単語テキストから単語帳に保存
+            const userWordByText = await userWordService.saveToWordbookByText(
+              mutation.data.userId,
+              mutation.data.wordText,
+              mutation.data.meaningId,
+              mutation.data.memoryHookId
+            );
+            success = !!userWordByText;
             break;
             
           case 'removeFromWordbook':
@@ -223,49 +256,48 @@ export const setupMutationQueueProcessor = () => {
     const netInfo = await NetInfo.fetch();
     if (netInfo.isConnected) {
       console.log('Network is connected, processing mutation queue');
-// src/hooks/useQueryClient.ts (続き)
-await processMutationQueue();
-}
-};
+      await processMutationQueue();
+    }
+  };
 
-// 初回実行
-handleOnline();
-
-// ネットワーク状態の変化を監視するリスナーを設定
-const unsubscribe = NetInfo.addEventListener(state => {
-if (state.isConnected) {
+  // 初回実行
   handleOnline();
-}
-});
 
-// リスナーの解除関数を返す
-return unsubscribe;
+  // ネットワーク状態の変化を監視するリスナーを設定
+  const unsubscribe = NetInfo.addEventListener(state => {
+    if (state.isConnected) {
+      handleOnline();
+    }
+  });
+
+  // リスナーの解除関数を返す
+  return unsubscribe;
 };
 
 // オフラインミューテーションのキュー状態を取得
 export const getMutationQueue = async (): Promise<OfflineMutation[]> => {
-try {
-const queueString = await AsyncStorage.getItem(MUTATION_QUEUE_KEY);
-return queueString ? JSON.parse(queueString) : [];
-} catch (error) {
-console.error('Error getting mutation queue:', error);
-return [];
-}
+  try {
+    const queueString = await AsyncStorage.getItem(MUTATION_QUEUE_KEY);
+    return queueString ? JSON.parse(queueString) : [];
+  } catch (error) {
+    console.error('Error getting mutation queue:', error);
+    return [];
+  }
 };
 
 // キューサイズの取得（UI通知用）
 export const getMutationQueueSize = async (): Promise<number> => {
-const queue = await getMutationQueue();
-return queue.length;
+  const queue = await getMutationQueue();
+  return queue.length;
 };
 
 // キューのクリア（デバッグ用）
 export const clearMutationQueue = async (): Promise<boolean> => {
-try {
-await AsyncStorage.setItem(MUTATION_QUEUE_KEY, JSON.stringify([]));
-return true;
-} catch (error) {
-console.error('Error clearing mutation queue:', error);
-return false;
-}
+  try {
+    await AsyncStorage.setItem(MUTATION_QUEUE_KEY, JSON.stringify([]));
+    return true;
+  } catch (error) {
+    console.error('Error clearing mutation queue:', error);
+    return false;
+  }
 };

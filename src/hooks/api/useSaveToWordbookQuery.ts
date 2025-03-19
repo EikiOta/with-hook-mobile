@@ -31,7 +31,17 @@ export const useSaveToWordbook = () => {
         return null; // オフライン時はnullを返す
       }
       
-      return userWordService.saveToWordbookByText(user.user_id, wordText, meaningId, memoryHookId);
+      try {
+        return await userWordService.saveToWordbookByText(
+          user.user_id, 
+          wordText, 
+          meaningId, 
+          memoryHookId
+        );
+      } catch (error) {
+        console.error('単語帳保存エラー:', error);
+        throw error; // エラーを上位に伝播
+      }
     },
     onSuccess: (_, variables) => {
       // 成功したら関連するキャッシュを無効化

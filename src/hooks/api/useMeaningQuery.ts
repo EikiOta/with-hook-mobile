@@ -40,11 +40,11 @@ export const useCreateMeaning = () => {
   
   return useMutation({
     mutationFn: async ({
-      wordId,
+      wordText,
       meaningText,
       isPublic
     }: {
-      wordId: number;
+      wordText: string;
       meaningText: string;
       isPublic: boolean;
     }) => {
@@ -53,19 +53,36 @@ export const useCreateMeaning = () => {
       // オフラインチェック
       if (await isOffline()) {
         await addToMutationQueue({
-          type: 'createMeaning',
-          data: { userId: user.user_id, wordId, meaningText, isPublic },
+          type: 'createMeaningByWordText',
+          data: { userId: user.user_id, wordText, meaningText, isPublic },
         });
         return null; // オフライン時はnullを返す
       }
       
-      return meaningService.createMeaning(user.user_id, wordId, meaningText, isPublic);
+      try {
+        // 単語テキストから意味を作成（この中で単語が存在しなければ作成する）
+        const meaning = await meaningService.createMeaningByWordText(
+          user.user_id, 
+          wordText, 
+          meaningText, 
+          isPublic
+        );
+        
+        if (!meaning) {
+          throw new Error('意味の作成に失敗しました');
+        }
+        
+        return meaning;
+      } catch (error) {
+        console.error('意味作成エラー:', error);
+        throw error; // エラーを上位に伝播させる
+      }
     },
     onSuccess: (data, variables) => {
       if (data) {
         // 成功したら関連するキャッシュを無効化
         queryClient.invalidateQueries({
-          queryKey: meaningKeys.byWord(variables.wordId, 1),
+          queryKey: [...meaningKeys.all, 'byWordText', variables.wordText, 1],
         });
         queryClient.invalidateQueries({
           queryKey: meaningKeys.my(user?.user_id || '', 1),

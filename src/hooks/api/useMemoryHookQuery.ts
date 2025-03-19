@@ -40,11 +40,11 @@ export const useCreateMemoryHook = () => {
   
   return useMutation({
     mutationFn: async ({
-      wordId,
+      wordText,
       hookText,
       isPublic
     }: {
-      wordId: number;
+      wordText: string;
       hookText: string;
       isPublic: boolean;
     }) => {
@@ -53,19 +53,36 @@ export const useCreateMemoryHook = () => {
       // オフラインチェック
       if (await isOffline()) {
         await addToMutationQueue({
-          type: 'createMemoryHook',
-          data: { userId: user.user_id, wordId, hookText, isPublic },
+          type: 'createMemoryHookByWordText',
+          data: { userId: user.user_id, wordText, hookText, isPublic },
         });
         return null; // オフライン時はnullを返す
       }
       
-      return memoryHookService.createMemoryHook(user.user_id, wordId, hookText, isPublic);
+      try {
+        // 単語テキストから記憶hookを作成（この中で単語が存在しなければ作成する）
+        const memoryHook = await memoryHookService.createMemoryHookByWordText(
+          user.user_id, 
+          wordText, 
+          hookText, 
+          isPublic
+        );
+        
+        if (!memoryHook) {
+          throw new Error('記憶hookの作成に失敗しました');
+        }
+        
+        return memoryHook;
+      } catch (error) {
+        console.error('記憶hook作成エラー:', error);
+        throw error; // エラーを上位に伝播させる
+      }
     },
     onSuccess: (data, variables) => {
       if (data) {
         // 成功したら関連するキャッシュを無効化
         queryClient.invalidateQueries({
-          queryKey: memoryHookKeys.byWord(variables.wordId, 1),
+          queryKey: [...memoryHookKeys.all, 'byWordText', variables.wordText, 1],
         });
         queryClient.invalidateQueries({
           queryKey: memoryHookKeys.my(user?.user_id || '', 1),
