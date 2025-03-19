@@ -1,7 +1,9 @@
+// src/services/supabaseService.ts
 import { supabase } from './supabase';
 import { User, Meaning, MemoryHook, UserWord, Word } from '../types';
 import { sanitizeInput } from '../utils/validation';
 import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // オフライン状態チェック
 export const isOffline = async (): Promise<boolean> => {
@@ -214,6 +216,23 @@ export const wordService = {
     }
   },
   
+  // 単語テキストから単語を取得
+  getWordByText: async (wordText: string): Promise<Word | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('words')
+        .select('*')
+        .eq('word', wordText.toLowerCase().trim())
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('単語取得エラー:', error);
+      return null;
+    }
+  },
+  
   // 単語が存在するか確認し、存在しなければ作成
   findOrCreateWord: async (wordText: string): Promise<Word | null> => {
     try {
@@ -244,6 +263,76 @@ export const wordService = {
       return newWord;
     } catch (error) {
       console.error('単語の検索または作成エラー:', error);
+      return null;
+    }
+  },
+
+  // 検索結果をキャッシュに保存
+  cacheSearchResults: async (prefix: string, results: any): Promise<boolean> => {
+    try {
+      const key = `SEARCH_CACHE_${prefix.toLowerCase()}`;
+      await AsyncStorage.setItem(key, JSON.stringify({
+        data: results,
+        timestamp: Date.now()
+      }));
+      return true;
+    } catch (error) {
+      console.error('検索結果キャッシュエラー:', error);
+      return false;
+    }
+  },
+
+  // キャッシュから検索結果を取得
+  getCachedSearchResults: async (prefix: string): Promise<any> => {
+    try {
+      const key = `SEARCH_CACHE_${prefix.toLowerCase()}`;
+      const cachedString = await AsyncStorage.getItem(key);
+      
+      if (cachedString) {
+        const cached = JSON.parse(cachedString);
+        // 1週間以内のキャッシュのみ有効
+        if (Date.now() - cached.timestamp < 7 * 24 * 60 * 60 * 1000) {
+          return cached.data;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('キャッシュ取得エラー:', error);
+      return null;
+    }
+  },
+
+  // Dictionary APIデータをキャッシュに保存
+  cacheDictionaryData: async (word: string, data: any): Promise<boolean> => {
+    try {
+      const key = `DICT_CACHE_${word.toLowerCase()}`;
+      await AsyncStorage.setItem(key, JSON.stringify({
+        data,
+        timestamp: Date.now()
+      }));
+      return true;
+    } catch (error) {
+      console.error('辞書データキャッシュエラー:', error);
+      return false;
+    }
+  },
+
+  // キャッシュからDictionary APIデータを取得
+  getCachedDictionaryData: async (word: string): Promise<any> => {
+    try {
+      const key = `DICT_CACHE_${word.toLowerCase()}`;
+      const cachedString = await AsyncStorage.getItem(key);
+      
+      if (cachedString) {
+        const cached = JSON.parse(cachedString);
+        // 1ヶ月以内のキャッシュのみ有効
+        if (Date.now() - cached.timestamp < 30 * 24 * 60 * 60 * 1000) {
+          return cached.data;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('辞書キャッシュ取得エラー:', error);
       return null;
     }
   }
@@ -277,6 +366,36 @@ export const meaningService = {
     }
   },
   
+  // 単語テキストに関連する意味一覧を取得
+  getMeaningsByWordText: async (wordText: string, userId: string, page: number = 1, limit: number = 20): Promise<{ meanings: Meaning[], total: number }> => {
+    try {
+      // まず単語を検索
+      const word = await wordService.getWordByText(wordText);
+      if (!word) return { meanings: [], total: 0 };
+      
+      // 単語IDで意味を検索
+      const { data, error, count } = await supabase
+        .from('meanings')
+        .select('*, user:users(*)', { count: 'exact' })
+        .eq('word_id', word.word_id)
+        .is('deleted_at', null)
+        // 自分の投稿か公開されているものだけ取得
+        .or(`user_id.eq.${userId},is_public.eq.true`)
+        .order('created_at', { ascending: false })
+        .range((page - 1) * limit, page * limit - 1);
+      
+      if (error) throw error;
+      
+      return {
+        meanings: data || [],
+        total: count || 0
+      };
+    } catch (error) {
+      console.error('単語テキストによる意味一覧取得エラー:', error);
+      return { meanings: [], total: 0 };
+    }
+  },
+  
   // 意味を作成
   createMeaning: async (userId: string, wordId: number, meaningText: string, isPublic: boolean): Promise<Meaning | null> => {
     try {
@@ -297,6 +416,21 @@ export const meaningService = {
       return data;
     } catch (error) {
       console.error('意味作成エラー:', error);
+      return null;
+    }
+  },
+  
+  // 単語テキストで意味を作成
+  createMeaningByWordText: async (userId: string, wordText: string, meaningText: string, isPublic: boolean): Promise<Meaning | null> => {
+    try {
+      // まず単語があるか確認し、なければ作成
+      const word = await wordService.findOrCreateWord(wordText);
+      if (!word) throw new Error('単語の作成に失敗しました');
+      
+      // 意味を作成
+      return await meaningService.createMeaning(userId, word.word_id, meaningText, isPublic);
+    } catch (error) {
+      console.error('単語テキストによる意味作成エラー:', error);
       return null;
     }
   },
@@ -403,6 +537,36 @@ export const memoryHookService = {
     }
   },
   
+  // 単語テキストに関連する記憶Hook一覧を取得
+  getMemoryHooksByWordText: async (wordText: string, userId: string, page: number = 1, limit: number = 20): Promise<{ hooks: MemoryHook[], total: number }> => {
+    try {
+      // まず単語を検索
+      const word = await wordService.getWordByText(wordText);
+      if (!word) return { hooks: [], total: 0 };
+      
+      // 単語IDで記憶Hookを検索
+      const { data, error, count } = await supabase
+        .from('memory_hooks')
+        .select('*, user:users(*)', { count: 'exact' })
+        .eq('word_id', word.word_id)
+        .is('deleted_at', null)
+        // 自分の投稿か公開されているものだけ取得
+        .or(`user_id.eq.${userId},is_public.eq.true`)
+        .order('created_at', { ascending: false })
+        .range((page - 1) * limit, page * limit - 1);
+      
+      if (error) throw error;
+      
+      return {
+        hooks: data || [],
+        total: count || 0
+      };
+    } catch (error) {
+      console.error('単語テキストによる記憶Hook一覧取得エラー:', error);
+      return { hooks: [], total: 0 };
+    }
+  },
+  
   // 記憶Hookを作成
   createMemoryHook: async (userId: string, wordId: number, hookText: string, isPublic: boolean): Promise<MemoryHook | null> => {
     try {
@@ -423,6 +587,21 @@ export const memoryHookService = {
       return data;
     } catch (error) {
       console.error('記憶Hook作成エラー:', error);
+      return null;
+    }
+  },
+  
+  // 単語テキストで記憶Hookを作成
+  createMemoryHookByWordText: async (userId: string, wordText: string, hookText: string, isPublic: boolean): Promise<MemoryHook | null> => {
+    try {
+      // まず単語があるか確認し、なければ作成
+      const word = await wordService.findOrCreateWord(wordText);
+      if (!word) throw new Error('単語の作成に失敗しました');
+      
+      // 記憶Hookを作成
+      return await memoryHookService.createMemoryHook(userId, word.word_id, hookText, isPublic);
+    } catch (error) {
+      console.error('単語テキストによる記憶Hook作成エラー:', error);
       return null;
     }
   },
@@ -588,6 +767,21 @@ export const userWordService = {
     }
   },
   
+  // 単語テキストを使って単語帳に追加または更新
+  saveToWordbookByText: async (userId: string, wordText: string, meaningId: number, memoryHookId?: number): Promise<UserWord | null> => {
+    try {
+      // まず単語を検索または作成
+      const word = await wordService.findOrCreateWord(wordText);
+      if (!word) throw new Error('単語の作成に失敗しました');
+      
+      // UserWordを保存
+      return await userWordService.saveToWordbook(userId, word.word_id, meaningId, memoryHookId);
+    } catch (error) {
+      console.error('単語テキストによる単語帳保存エラー:', error);
+      return null;
+    }
+  },
+  
   // 単語帳から削除（論理削除）
   removeFromWordbook: async (userId: string, userWordsId: number): Promise<boolean> => {
     try {
@@ -622,6 +816,21 @@ export const userWordService = {
       return data;
     } catch (error) {
       console.error('単語帳確認エラー:', error);
+      return null;
+    }
+  },
+  
+  // 単語テキストが単語帳に登録されているか確認
+  checkWordInWordbookByText: async (userId: string, wordText: string): Promise<UserWord | null> => {
+    try {
+      // まず単語を検索
+      const word = await wordService.getWordByText(wordText);
+      if (!word) return null;
+      
+      // 単語IDで登録を確認
+      return await userWordService.checkWordInWordbook(userId, word.word_id);
+    } catch (error) {
+      console.error('単語テキストによる単語帳確認エラー:', error);
       return null;
     }
   }
