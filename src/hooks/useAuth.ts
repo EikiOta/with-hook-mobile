@@ -1,289 +1,173 @@
-import { useEffect, useState } from 'react';
-import { supabase, getSession, getCurrentUser, generateAuthUrl } from '../services/supabase';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { supabase, getSession, getCurrentUser } from '../services/supabase';
 import { useAuthStore } from '../stores/authStore';
 import { Alert, Platform } from 'react-native';
-import NetInfo from '@react-native-community/netinfo';
 import { makeRedirectUri } from 'expo-auth-session';
 import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 
-// デバッグモード
-const DEBUG = true;
-
-// デバッグログ関数
-const logDebug = (message: string, data?: any) => {
-  if (DEBUG) {
-    console.log(`[AUTH] ${message}`, data ? data : '');
-  }
-};
-
 // アプリスキームを取得
 const APP_SCHEME = Constants.expoConfig?.scheme || 'with-hook';
 
+// リダイレクトURIを直接ここで生成（副作用なし）
+const generateRedirectUri = () => {
+  return `${APP_SCHEME}://login-callback`;
+};
+
 export const useAuth = () => {
-  const { checkSession, isAuthenticated, isLoading, user, isDeleted } = useAuthStore();
-  const [authState, setAuthState] = useState<{
-    redirectUri: string;
-    lastAuthError: string | null;
-    lastAuthProvider: string | null;
-  }>({
-    redirectUri: '',
-    lastAuthError: null,
-    lastAuthProvider: null,
-  });
-
-  // 初期化時にURIを生成
+  // グローバルストアから必要な状態のみ取得
+  const { user, isAuthenticated, isLoading, isDeleted, checkSession } = useAuthStore();
+  
+  // 初期化状態追跡
+  const isInitialized = useRef(false);
+  
+  // リダイレクトURI
+  const redirectUri = useRef(generateRedirectUri());
+  
+  // 初期化 - 一度だけ実行
   useEffect(() => {
-    const initRedirectUri = () => {
-      try {
-        // リダイレクトURI生成
-        const uri = getRedirectUri();
-        setAuthState(prev => ({ ...prev, redirectUri: uri }));
-        logDebug('リダイレクトURI初期化', { uri });
-      } catch (error) {
-        logDebug('リダイレクトURI初期化エラー', error);
-      }
-    };
-
-    initRedirectUri();
-  }, []);
-
-  // 認証状態の監視
-  useEffect(() => {
-    logDebug('認証状態監視を開始');
+    if (isInitialized.current) return;
+    isInitialized.current = true;
     
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      logDebug('認証状態変更イベント', { event, hasSession: !!session });
-      checkSession();
-    });
-
-    // ネットワーク接続の監視
-    const unsubscribeNetInfo = NetInfo.addEventListener(state => {
-      if (state.isConnected && !isAuthenticated && !isLoading) {
-        logDebug('オンライン検知、セッション再確認');
-        // オンラインになったらセッション再確認
+    // 認証状態チェック
+    console.log('[AUTH] 初期化時のセッションチェック');
+    checkSession();
+    
+    // Auth状態変更リスナー
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (['SIGNED_IN', 'SIGNED_OUT'].includes(event)) {
+        console.log('[AUTH] 認証状態変更:', event);
         checkSession();
       }
     });
-
-    // ディープリンクの監視（コールバックURL処理用）
-    const linkingSubscription = Linking.addEventListener('url', ({ url }) => {
-      logDebug('ディープリンク検知', { url });
+    
+    // ディープリンクリスナー
+    const deepLinkListener = Linking.addEventListener('url', ({ url }) => {
+      console.log('[AUTH] ディープリンク検知:', url);
       if (url.includes('code=')) {
         handleAuthCallback(url);
       }
     });
-
+    
     return () => {
-      logDebug('認証状態監視を終了');
       authListener.subscription.unsubscribe();
-      unsubscribeNetInfo();
-      linkingSubscription.remove();
+      deepLinkListener.remove();
     };
-  }, [isAuthenticated, isLoading]);
+  }, []); // 空の依存配列 - 初回マウント時のみ実行
 
-  // 認証コールバックの処理
-  const handleAuthCallback = async (url: string) => {
+  // 認証コールバック処理
+  const handleAuthCallback = async (url) => {
     try {
-      logDebug('認証コールバック処理開始', { url });
+      console.log('[AUTH] コールバック処理開始');
       
-      // コードを抽出
       const codeMatch = url.match(/code=([^&]+)/);
-      if (!codeMatch) {
-        throw new Error('認証コードが見つかりません');
-      }
+      if (!codeMatch) return false;
       
       const code = codeMatch[1];
-      logDebug('認証コード抽出成功', { codePreview: code.substring(0, 5) + '...' });
+      console.log('[AUTH] 認証コード取得成功');
       
-      // セッション交換
-      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
       
       if (error) {
-        logDebug('セッション交換エラー', error);
-        throw error;
+        console.error('[AUTH] セッション交換エラー:', error.message);
+        return false;
       }
       
-      logDebug('セッション交換成功', { hasSession: !!data.session });
+      console.log('[AUTH] セッション交換成功');
+      checkSession();
+      return true;
       
-      // セッション確認
-      await checkSession();
-      
-      return !!data.session;
     } catch (error) {
-      logDebug('認証コールバック処理エラー', error);
+      console.error('[AUTH] コールバック処理エラー:', error);
       return false;
-    }
-  };
-
-  // 環境に適したリダイレクトURIを取得
-  const getRedirectUri = () => {
-    try {
-      // 各種方法でリダイレクトURI生成を試みる
-      const methods = {
-        // 方法1: makeRedirectUri関数を使用
-        standard: makeRedirectUri({
-          scheme: APP_SCHEME,
-          path: 'login-callback',
-        }),
-        
-        // 方法2: 完全カスタム
-        custom: `${APP_SCHEME}://login-callback`,
-        
-        // 方法3: 開発環境特有のURI
-        devSpecific: __DEV__ 
-          ? `exp://${Platform.select({
-              ios: Constants.expoConfig?.hostUri || 'localhost:8081',
-              android: Constants.expoConfig?.hostUri || 'localhost:8081',
-              default: 'localhost:8081',
-            })}/--/login-callback`
-          : `${APP_SCHEME}://login-callback`,
-            
-        // 方法4: Linkingを使用
-        linking: Linking.createURL('login-callback'),
-      };
-      
-      logDebug('リダイレクトURI生成オプション', methods);
-      
-      // 環境に応じたURIを選択
-      let selectedUri = '';
-      
-      if (__DEV__) {
-        // 開発環境ではExpo URIを使用
-        selectedUri = methods.standard;
-      } else {
-        // 本番環境では固定URIを使用
-        selectedUri = methods.custom;
-      }
-      
-      logDebug('選択したリダイレクトURI', { uri: selectedUri });
-      return selectedUri;
-    } catch (error) {
-      logDebug('リダイレクトURI生成エラー', error);
-      // エラー時のフォールバック
-      return __DEV__ 
-        ? `exp://localhost:8081/--/login-callback`
-        : `${APP_SCHEME}://login-callback`;
     }
   };
 
   // Google認証
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = useCallback(async () => {
     try {
-      logDebug('Google認証開始');
-      setAuthState(prev => ({ ...prev, lastAuthProvider: 'google', lastAuthError: null }));
+      const uri = redirectUri.current;
+      console.log('[AUTH] Googleログイン開始:', uri);
       
-      const redirectUri = getRedirectUri();
-      logDebug('Google認証リダイレクトURI', { redirectUri });
-      
-      // 方法1: カスタム認証URL生成関数を使用
-      const authUrl = await generateAuthUrl('google', redirectUri);
-      logDebug('カスタム生成認証URL', { authUrl });
-      
-      // ブラウザでOAuth認証を実行
-      const result = await WebBrowser.openAuthSessionAsync(
-        authUrl,
-        redirectUri,
-        {
-          showInRecents: true,
-          createTask: true,
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: uri,
+          skipBrowserRedirect: true,
         }
-      );
-      
-      logDebug('認証ブラウザ結果', { 
-        type: result.type,
-        url: result.url ? `${result.url.substring(0, 30)}...` : 'なし'
       });
+      
+      if (error || !data.url) {
+        throw new Error(error?.message || 'URLの取得に失敗しました');
+      }
+      
+      const result = await WebBrowser.openAuthSessionAsync(data.url, uri);
       
       if (result.type === 'success' && result.url) {
         return await handleAuthCallback(result.url);
       }
       
       return false;
-    } catch (error: any) {
-      logDebug('Google認証エラー', error);
-      setAuthState(prev => ({ ...prev, lastAuthError: error.message }));
+    } catch (error) {
+      console.error('[AUTH] Googleログインエラー:', error);
       Alert.alert('エラー', 'Googleログインに失敗しました');
       return false;
     }
-  };
+  }, []);
 
   // GitHub認証
-  const loginWithGithub = async () => {
+  const loginWithGithub = useCallback(async () => {
     try {
-      logDebug('GitHub認証開始');
-      setAuthState(prev => ({ ...prev, lastAuthProvider: 'github', lastAuthError: null }));
+      const uri = redirectUri.current;
+      console.log('[AUTH] GitHubログイン開始:', uri);
       
-      const redirectUri = getRedirectUri();
-      logDebug('GitHub認証リダイレクトURI', { redirectUri });
-      
-      // カスタム認証URL生成
-      const authUrl = await generateAuthUrl('github', redirectUri);
-      logDebug('カスタム生成認証URL', { authUrl });
-      
-      // ブラウザでOAuth認証を実行
-      const result = await WebBrowser.openAuthSessionAsync(
-        authUrl,
-        redirectUri,
-        {
-          showInRecents: true,
-          createTask: true,
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: {
+          redirectTo: uri,
+          skipBrowserRedirect: true,
         }
-      );
-      
-      logDebug('認証ブラウザ結果', { 
-        type: result.type,
-        url: result.url ? `${result.url.substring(0, 30)}...` : 'なし'
       });
+      
+      if (error || !data.url) {
+        throw new Error(error?.message || 'URLの取得に失敗しました');
+      }
+      
+      const result = await WebBrowser.openAuthSessionAsync(data.url, uri);
       
       if (result.type === 'success' && result.url) {
         return await handleAuthCallback(result.url);
       }
       
       return false;
-    } catch (error: any) {
-      logDebug('GitHub認証エラー', error);
-      setAuthState(prev => ({ ...prev, lastAuthError: error.message }));
+    } catch (error) {
+      console.error('[AUTH] GitHubログインエラー:', error);
       Alert.alert('エラー', 'GitHubログインに失敗しました');
       return false;
     }
-  };
+  }, []);
 
-  // デバッグ用の追加情報
-  const getDebugInfo = async () => {
+  // デバッグ情報取得
+  const getDebugInfo = useCallback(async () => {
     try {
-      const sessionData = await getSession();
-      const userData = await getCurrentUser();
-      
       return {
         auth: {
           isAuthenticated,
           isLoading,
           isDeleted,
-          hasUser: !!user,
+          hasUser: !!user
         },
-        session: {
-          active: !!sessionData,
-          expiresAt: sessionData?.expires_at,
-        },
-        user: {
-          id: userData?.id,
-          email: userData?.email,
-        },
-        redirectUri: authState.redirectUri,
-        lastAuthProvider: authState.lastAuthProvider,
-        lastAuthError: authState.lastAuthError,
+        redirectUri: redirectUri.current,
         platform: Platform.OS,
-        isDev: __DEV__,
+        isDev: __DEV__
       };
     } catch (error) {
-      return {
-        error: String(error),
-      };
+      return { error: String(error) };
     }
-  };
+  }, [isAuthenticated, isLoading, isDeleted, user]);
 
+  // 必要最小限のメソッドのみ公開
   return {
     user,
     isAuthenticated,
@@ -292,6 +176,6 @@ export const useAuth = () => {
     loginWithGoogle,
     loginWithGithub,
     checkSession,
-    getDebugInfo, // デバッグ情報取得用
+    getDebugInfo
   };
 };
