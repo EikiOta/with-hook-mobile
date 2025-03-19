@@ -35,7 +35,12 @@ export const useFindOrCreateWord = () => {
         throw new Error('単語の作成にはインターネット接続が必要です');
       }
       
-      return wordService.findOrCreateWord(wordText);
+      try {
+        return await wordService.findOrCreateWord(wordText);
+      } catch (error) {
+        console.error('単語検索/作成エラー:', error);
+        return null;
+      }
     },
     onSuccess: (data) => {
       if (data) {

@@ -223,7 +223,7 @@ export const wordService = {
         .from('words')
         .select('*')
         .eq('word', wordText.toLowerCase().trim())
-        .single();
+        .maybeSingle(); // single()からmaybeSingle()に変更
       
       if (error) throw error;
       return data;
@@ -236,30 +236,41 @@ export const wordService = {
   // 単語が存在するか確認し、存在しなければ作成
   findOrCreateWord: async (wordText: string): Promise<Word | null> => {
     try {
-      // まず既存の単語を検索
+      // 入力値のサニタイズ
       const sanitizedWord = sanitizeInput(wordText.toLowerCase().trim());
+      if (!sanitizedWord) return null;
       
+      // まず既存の単語を検索
       const { data: existingWord, error: searchError } = await supabase
         .from('words')
         .select('*')
         .eq('word', sanitizedWord)
-        .maybeSingle();
+        .maybeSingle(); // 変更: single() → maybeSingle()
       
-      if (searchError) throw searchError;
+      if (searchError) {
+        console.error('単語検索エラー:', searchError);
+        return null;
+      }
       
       // 既存の単語が見つかった場合はそれを返す
       if (existingWord) {
         return existingWord;
       }
       
-      // 見つからなければ新規作成
+      // 見つからなければ新規作成を試みる
+      console.log(`単語「${sanitizedWord}」を新規作成します`);
       const { data: newWord, error: insertError } = await supabase
         .from('words')
         .insert({ word: sanitizedWord })
         .select()
         .single();
       
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error('単語作成エラー:', insertError);
+        return null;
+      }
+      
+      console.log(`単語「${sanitizedWord}」を作成しました:`, newWord);
       return newWord;
     } catch (error) {
       console.error('単語の検索または作成エラー:', error);
@@ -371,7 +382,10 @@ export const meaningService = {
     try {
       // まず単語を検索
       const word = await wordService.getWordByText(wordText);
-      if (!word) return { meanings: [], total: 0 };
+      if (!word) {
+        console.log(`単語「${wordText}」が存在しません`);
+        return { meanings: [], total: 0 };
+      }
       
       // 単語IDで意味を検索
       const { data, error, count } = await supabase
@@ -542,7 +556,10 @@ export const memoryHookService = {
     try {
       // まず単語を検索
       const word = await wordService.getWordByText(wordText);
-      if (!word) return { hooks: [], total: 0 };
+      if (!word) {
+        console.log(`単語「${wordText}」が存在しません`);
+        return { hooks: [], total: 0 };
+      }
       
       // 単語IDで記憶Hookを検索
       const { data, error, count } = await supabase

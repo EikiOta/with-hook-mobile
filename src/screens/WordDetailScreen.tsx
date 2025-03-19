@@ -10,7 +10,8 @@ import {
   useCreateMeaning, 
   useCreateMemoryHook,
   useSaveToWordbook, 
-  useCheckWordInWordbook 
+  useCheckWordInWordbook,
+  useFindOrCreateWord // 追加: 単語を検索または作成する機能
 } from '../hooks/api';
 import MeaningForm from '../components/MeaningForm';
 import MemoryHookForm from '../components/MemoryHookForm';
@@ -27,6 +28,11 @@ const WordDetailScreen = () => {
   const [showHookForm, setShowHookForm] = useState(false);
   const [selectedMeaning, setSelectedMeaning] = useState(null);
   const [selectedMemoryHook, setSelectedMemoryHook] = useState(null);
+  const [isWordExisting, setIsWordExisting] = useState(false);
+  const [isCreatingWord, setIsCreatingWord] = useState(false);
+  
+  // 単語の検索または作成機能を使用
+  const findOrCreateWord = useFindOrCreateWord();
   
   // データ取得フック
   const { data: dictionaryData, isLoading: isDictLoading } = useExternalDictionary(word);
@@ -38,6 +44,32 @@ const WordDetailScreen = () => {
   const createMeaning = useCreateMeaning();
   const createMemoryHook = useCreateMemoryHook();
   const saveToWordbook = useSaveToWordbook();
+  
+  // 単語のチェックと必要に応じて作成
+  useEffect(() => {
+    const checkAndCreateWord = async () => {
+      try {
+        // まず単語の存在チェックと単語の作成を一度に行う
+        setIsCreatingWord(true);
+        const wordRecord = await findOrCreateWord.mutateAsync(word);
+        
+        if (wordRecord) {
+          setIsWordExisting(true);
+        } else {
+          // 単語の作成に失敗した場合
+          setIsWordExisting(false);
+          console.warn('単語の作成に失敗しました:', word);
+        }
+      } catch (error) {
+        console.error('単語チェック/作成エラー:', error);
+        setIsWordExisting(false);
+      } finally {
+        setIsCreatingWord(false);
+      }
+    };
+    
+    checkAndCreateWord();
+  }, [word]);
   
   // 意味作成ハンドラ
   const handleCreateMeaning = async (meaningText, isPublic) => {
@@ -101,7 +133,7 @@ const WordDetailScreen = () => {
     }
   };
   
-  const isLoading = isDictLoading || isMeaningLoading || isHooksLoading || isCheckingWordbook;
+  const isLoading = isDictLoading || isMeaningLoading || isHooksLoading || isCheckingWordbook || isCreatingWord;
   
   if (isLoading) {
     return (
