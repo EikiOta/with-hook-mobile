@@ -72,7 +72,7 @@ const WordDetailScreen = () => {
   };
   
   // 単語帳保存ハンドラ
-  const handleSaveToWordbook = async () => {
+  const handleSaveToMyWords = async () => {
     if (!selectedMeaning) {
       Alert.alert('エラー', '意味を選択してください');
       return;
@@ -91,7 +91,7 @@ const WordDetailScreen = () => {
         [
           { 
             text: 'OK', 
-            onPress: () => navigation.navigate('MyWordbook') 
+            onPress: () => navigation.navigate('MainTabs', { screen: 'MyWordbook' })
           }
         ]
       );
@@ -284,7 +284,7 @@ const WordDetailScreen = () => {
           mode="contained" 
           disabled={!selectedMeaning}
           loading={saveToWordbook.isLoading}
-          onPress={handleSaveToWordbook}
+          onPress={handleSaveToMyWords}
           style={styles.saveButton}
         >
           {wordInWordbook ? 'My単語帳を更新' : 'My単語帳に追加'}
