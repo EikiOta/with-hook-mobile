@@ -5,6 +5,7 @@ import { TextInput, Surface, Text, Switch, Button, ActivityIndicator } from 'rea
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useUpdateMeaning } from '../hooks/api/useMeaningQuery';
 import { useAuthStore } from '../stores/authStore';
+import { supabase } from '../services/supabase'; // supabaseクライアントをインポート
 
 interface RouteParams {
   meaningId?: number;

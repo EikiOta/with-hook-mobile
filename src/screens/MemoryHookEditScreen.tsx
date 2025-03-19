@@ -5,7 +5,7 @@ import { TextInput, Surface, Text, Switch, Button, ActivityIndicator } from 'rea
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useUpdateMemoryHook } from '../hooks/api/useMemoryHookQuery';
 import { useAuthStore } from '../stores/authStore';
-import { supabase } from '../services/supabase';
+import { supabase } from '../services/supabase'; // supabaseクライアントをインポート
 
 interface RouteParams {
   memoryHookId?: number;
