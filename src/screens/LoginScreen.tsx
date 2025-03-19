@@ -8,9 +8,12 @@ import { makeRedirectUri } from 'expo-auth-session';
 import Constants from 'expo-constants';
 import OAuthButton from '../components/OAuthButton';
 
-// WebブラウザのリダイレクトURIの取得
+// WebブラウザのリダイレクトURIの取得 - スキーム設定を使う
 const redirectUri = makeRedirectUri({
-  scheme: 'with-hook'
+  scheme: 'with-hook',
+  preferLocalhost: false,
+  path: 'login-callback',
+  native: 'with-hook://login-callback',
 });
 
 // 認証セッションの交換処理
@@ -40,6 +43,10 @@ const LoginScreen = () => {
     try {
       setLoading(true);
       
+      // デバッグ情報
+      console.log(`認証開始: ${provider}`);
+      console.log(`リダイレクトURI: ${redirectUri}`);
+      
       // Supabaseの認証URL作成
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -52,10 +59,16 @@ const LoginScreen = () => {
       if (error) throw error;
       if (!data.url) throw new Error('認証URLが取得できませんでした');
 
-      console.log('認証リダイレクトURI:', redirectUri);
+      console.log('認証URL:', data.url);
 
       // 外部ブラウザでOAuth認証を実行
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url, 
+        redirectUri,
+        { showInRecents: true }
+      );
+      
+      console.log('認証結果:', result.type);
       
       if (result.type === 'success' && result.url) {
         console.log('認証成功、コールバックURL:', result.url);
