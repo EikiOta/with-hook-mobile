@@ -58,10 +58,66 @@ export const userService = {
   // ユーザーを論理削除
   deleteUser: async (userId: string): Promise<boolean> => {
     try {
-      // RPC関数を使用してユーザーを削除
-      const { data, error } = await supabase.rpc('delete_user');
+      // ユーザーを削除
+      const { error: userError } = await supabase
+        .from('users')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('user_id', userId);
       
-      if (error) throw error;
+      if (userError) throw userError;
+      
+      // 関連データも論理削除
+      // 意味を更新
+      const { data: meanings } = await supabase
+        .from('meanings')
+        .select('*')
+        .eq('user_id', userId)
+        .is('deleted_at', null);
+      
+      if (meanings && meanings.length > 0) {
+        for (const meaning of meanings) {
+          const deletionPrefix = "この意味はユーザによって削除されました（元の意味: ";
+          const newMeaning = `${deletionPrefix}${meaning.meaning}）`;
+          
+          await supabase
+            .from('meanings')
+            .update({ 
+              deleted_at: new Date().toISOString(), 
+              meaning: newMeaning 
+            })
+            .eq('meaning_id', meaning.meaning_id);
+        }
+      }
+      
+      // 記憶hooksを更新
+      const { data: hooks } = await supabase
+        .from('memory_hooks')
+        .select('*')
+        .eq('user_id', userId)
+        .is('deleted_at', null);
+      
+      if (hooks && hooks.length > 0) {
+        for (const hook of hooks) {
+          const deletionPrefix = "この記憶hookはユーザによって削除されました（元の記憶hook: ";
+          const newHook = `${deletionPrefix}${hook.memory_hook}）`;
+          
+          await supabase
+            .from('memory_hooks')
+            .update({ 
+              deleted_at: new Date().toISOString(), 
+              memory_hook: newHook 
+            })
+            .eq('memory_hook_id', hook.memory_hook_id);
+        }
+      }
+      
+      // UserWordを更新
+      await supabase
+        .from('user_words')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .is('deleted_at', null);
+      
       return true;
     } catch (error) {
       console.error('ユーザー削除エラー:', error);
@@ -81,19 +137,70 @@ export const userService = {
       if (userError) throw userError;
       
       // 関連データも復旧
-      await Promise.all([
-        supabase.from('meanings')
-          .update({ deleted_at: null })
-          .eq('user_id', userId),
+      // 意味を復旧
+      const { data: meanings } = await supabase
+        .from('meanings')
+        .select('*')
+        .eq('user_id', userId)
+        .not('deleted_at', 'is', null);
+      
+      if (meanings && meanings.length > 0) {
+        for (const meaning of meanings) {
+          // 削除メッセージから元のテキストを抽出
+          let originalText = meaning.meaning;
+          const deletionPrefix = "この意味はユーザによって削除されました（元の意味: ";
+          if (originalText.startsWith(deletionPrefix)) {
+            originalText = originalText.substring(
+              deletionPrefix.length, 
+              originalText.length - 1 // 末尾の "）" を除去
+            );
+          }
           
-        supabase.from('memory_hooks')
-          .update({ deleted_at: null })
-          .eq('user_id', userId),
+          await supabase
+            .from('meanings')
+            .update({ 
+              deleted_at: null,
+              meaning: originalText
+            })
+            .eq('meaning_id', meaning.meaning_id);
+        }
+      }
+      
+      // 記憶hookを復旧
+      const { data: hooks } = await supabase
+        .from('memory_hooks')
+        .select('*')
+        .eq('user_id', userId)
+        .not('deleted_at', 'is', null);
+      
+      if (hooks && hooks.length > 0) {
+        for (const hook of hooks) {
+          // 削除メッセージから元のテキストを抽出
+          let originalText = hook.memory_hook;
+          const deletionPrefix = "この記憶hookはユーザによって削除されました（元の記憶hook: ";
+          if (originalText.startsWith(deletionPrefix)) {
+            originalText = originalText.substring(
+              deletionPrefix.length, 
+              originalText.length - 1 // 末尾の "）" を除去
+            );
+          }
           
-        supabase.from('user_words')
-          .update({ deleted_at: null })
-          .eq('user_id', userId),
-      ]);
+          await supabase
+            .from('memory_hooks')
+            .update({ 
+              deleted_at: null,
+              memory_hook: originalText
+            })
+            .eq('memory_hook_id', hook.memory_hook_id);
+        }
+      }
+      
+      // UserWordを復旧
+      await supabase
+        .from('user_words')
+        .update({ deleted_at: null })
+        .eq('user_id', userId)
+        .not('deleted_at', 'is', null);
       
       return true;
     } catch (error) {
@@ -461,12 +568,38 @@ export const meaningService = {
   // 意味を論理削除 - RPC関数を使用
   deleteMeaning: async (meaningId: number, userId: string): Promise<boolean> => {
     try {
-      // RPC関数を呼び出す
-      const { data, error } = await supabase
-        .rpc('delete_meaning', { p_meaning_id: meaningId });
+      // 意味レコードを取得
+      const { data: meaning, error: fetchError } = await supabase
+        .from('meanings')
+        .select('*')
+        .eq('meaning_id', meaningId)
+        .eq('user_id', userId)
+        .single();
+        
+      if (fetchError) throw fetchError;
+      if (!meaning) return false;
       
+      // 削除済みかチェック
+      if (meaning.deleted_at !== null) {
+        return true; // 既に削除済み
+      }
+      
+      // 削除メッセージ作成
+      const deletionPrefix = "この意味はユーザによって削除されました（元の意味: ";
+      const newMeaning = `${deletionPrefix}${meaning.meaning}）`;
+      
+      // 意味を論理削除
+      const { error } = await supabase
+        .from('meanings')
+        .update({
+          deleted_at: new Date().toISOString(),
+          meaning: newMeaning
+        })
+        .eq('meaning_id', meaningId)
+        .eq('user_id', userId);
+        
       if (error) throw error;
-      return !!data; // trueまたはfalseを返す
+      return true;
     } catch (error) {
       console.error('意味削除エラー:', error);
       return false;
@@ -638,12 +771,38 @@ export const memoryHookService = {
   // 記憶Hookを論理削除 - RPC関数を使用
   deleteMemoryHook: async (hookId: number, userId: string): Promise<boolean> => {
     try {
-      // RPC関数を呼び出す
-      const { data, error } = await supabase
-        .rpc('delete_memory_hook', { p_hook_id: hookId });
+      // 記憶hookレコードを取得
+      const { data: hook, error: fetchError } = await supabase
+        .from('memory_hooks')
+        .select('*')
+        .eq('memory_hook_id', hookId)
+        .eq('user_id', userId)
+        .single();
+        
+      if (fetchError) throw fetchError;
+      if (!hook) return false;
       
+      // 削除済みかチェック
+      if (hook.deleted_at !== null) {
+        return true; // 既に削除済み
+      }
+      
+      // 削除メッセージ作成
+      const deletionPrefix = "この記憶hookはユーザによって削除されました（元の記憶hook: ";
+      const newHook = `${deletionPrefix}${hook.memory_hook}）`;
+      
+      // 記憶hookを論理削除
+      const { error } = await supabase
+        .from('memory_hooks')
+        .update({
+          deleted_at: new Date().toISOString(),
+          memory_hook: newHook
+        })
+        .eq('memory_hook_id', hookId)
+        .eq('user_id', userId);
+        
       if (error) throw error;
-      return !!data; // trueまたはfalseを返す
+      return true;
     } catch (error) {
       console.error('記憶Hook削除エラー:', error);
       return false;
@@ -784,17 +943,19 @@ export const userWordService = {
     try {
       console.log(`削除処理開始: user_id=${userId}, user_words_id=${userWordsId}`);
       
-      // RPC関数を呼び出す
-      const { data, error } = await supabase
-        .rpc('remove_from_wordbook', { p_user_words_id: userWordsId });
+      const { error } = await supabase
+        .from('user_words')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('user_words_id', userWordsId)
+        .eq('user_id', userId);
       
       if (error) {
-        console.error('Supabase RPC エラー:', error);
+        console.error('Supabaseエラー:', error);
         throw error;
       }
       
       console.log('削除処理成功');
-      return !!data; // trueまたはfalseを返す
+      return true;
     } catch (error) {
       console.error('単語帳削除エラー:', error);
       return false;

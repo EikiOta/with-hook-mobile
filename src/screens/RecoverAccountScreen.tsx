@@ -1,8 +1,9 @@
+// src/screens/RecoverAccountScreen.tsx
 import React, { useState } from 'react';
 import { View, StyleSheet, Image, Alert } from 'react-native';
 import { Button, Text, Surface, ActivityIndicator } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
-import { useAuthStore } from '../stores';
+import { useAuthStore } from '../stores/authStore';
 import { formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
 
@@ -11,7 +12,7 @@ const RecoverAccountScreen = () => {
   const navigation = useNavigation();
   const { user, logout, recoverAccount } = useAuthStore();
 
-  // 削除日時を取得（仮に30日前としてダミーデータを表示）
+  // 削除日時を取得
   const deletedDate = user?.deleted_at ? new Date(user.deleted_at) : new Date();
   const timeAgo = formatDistanceToNow(deletedDate, { addSuffix: true, locale: ja });
   
@@ -31,8 +32,8 @@ const RecoverAccountScreen = () => {
       } else {
         throw new Error('復旧に失敗しました');
       }
-    } catch (error: any) {
-      console.error('アカウント復旧エラー:', error.message);
+    } catch (error) {
+      console.error('アカウント復旧エラー:', error);
       Alert.alert('エラー', 'アカウントの復旧に失敗しました。時間をおいて再度お試しください。');
     } finally {
       setLoading(false);
@@ -45,8 +46,8 @@ const RecoverAccountScreen = () => {
       setLoading(true);
       await logout();
       Alert.alert('ログアウト', 'ログアウトしました。新しいアカウントでログインできます。');
-    } catch (error: any) {
-      console.error('ログアウトエラー:', error.message);
+    } catch (error) {
+      console.error('ログアウトエラー:', error);
       Alert.alert('エラー', 'ログアウトに失敗しました。時間をおいて再度お試しください。');
     } finally {
       setLoading(false);

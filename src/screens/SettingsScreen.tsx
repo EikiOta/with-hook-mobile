@@ -7,6 +7,7 @@ import { useAuthStore } from '../stores/authStore';
 import { clearApiCache } from '../utils/api';
 import { clearMutationQueue } from '../hooks/useQueryClient';
 import { appStorage } from '../utils/mmkv';
+import { userService } from '../services/supabaseService';
 
 const SettingsScreen = () => {
   const navigation = useNavigation();
@@ -53,10 +54,12 @@ const SettingsScreen = () => {
             try {
               setIsLoading(true);
               
-              // Supabase APIで論理削除
-              const { error } = await supabase.rpc('delete_user');
+              // userServiceを使用してユーザーを削除
+              const success = await userService.deleteUser(user?.user_id || '');
               
-              if (error) throw error;
+              if (!success) {
+                throw new Error('削除処理に失敗しました');
+              }
               
               // 削除成功後、ログアウト
               await logout();

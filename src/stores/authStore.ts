@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { User } from '../types';
 import { getSession, getCurrentUser, supabase } from '../services/supabase';
 import { saveUserData, removeUserData } from '../utils/storage';
+import { userService } from '../services/supabaseService';
 
 // すでにセッションチェックが完了したかどうかを追跡
 let checkSessionCompleted = false;
@@ -127,24 +128,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!user) return false;
       
       // ユーザーの論理削除フラグを解除
-      const { error: userError } = await supabase
-        .from('users')
-        .update({ deleted_at: null })
-        .eq('user_id', user.user_id);
+      const success = await userService.recoverUser(user.user_id);
       
-      if (userError) throw userError;
+      if (success) {
+        // 最新のユーザーデータを取得
+        await get().checkSession();
+      }
       
-      // 関連するデータも復旧
-      await Promise.all([
-        supabase.from('meanings').update({ deleted_at: null }).eq('user_id', user.user_id),
-        supabase.from('memory_hooks').update({ deleted_at: null }).eq('user_id', user.user_id),
-        supabase.from('user_words').update({ deleted_at: null }).eq('user_id', user.user_id),
-      ]);
-      
-      // 最新のユーザーデータを取得
-      await get().checkSession();
-      
-      return true;
+      return success;
     } catch (error) {
       console.error('アカウント復旧エラー:', error);
       return false;
