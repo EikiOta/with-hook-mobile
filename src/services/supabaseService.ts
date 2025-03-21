@@ -827,15 +827,40 @@ export const userWordService = {
   // 単語帳から削除（論理削除）
   removeFromWordbook: async (userId: string, userWordsId: number): Promise<boolean> => {
     try {
+      console.log(`削除処理開始: user_id=${userId}, user_words_id=${userWordsId}`);
+      
+      // まず対象レコードが存在するか確認し、deleted_atがnullのレコードのみを対象とする
+      const { data: record, error: findError } = await supabase
+        .from('user_words')
+        .select('*')
+        .eq('user_words_id', userWordsId)
+        .eq('user_id', userId)
+        .is('deleted_at', null)
+        .single();
+      
+      if (findError) {
+        console.error('レコード検索エラー:', findError);
+        return false;
+      }
+      
+      if (!record) {
+        console.error('対象レコードが見つかりません');
+        return false;
+      }
+      
+      // 次に更新を実行（user_idの条件も含める）
       const { error } = await supabase
         .from('user_words')
-        .update({
-          deleted_at: new Date().toISOString()
-        })
+        .update({ deleted_at: new Date().toISOString() })
         .eq('user_words_id', userWordsId)
-        .eq('user_id', userId);
+        .eq('user_id', userId);  // RLSポリシーに対応するため、user_idの条件も必須
       
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase更新エラー:', error);
+        throw error;
+      }
+      
+      console.log('削除処理成功');
       return true;
     } catch (error) {
       console.error('単語帳削除エラー:', error);
