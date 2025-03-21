@@ -13,7 +13,10 @@ const meaningServiceExt = {
   getByWord: meaningService.getMeaningsByWord,
   getByWordText: meaningService.getMeaningsByWordText,
   getMy: meaningService.getMyMeanings,
-  createByWordText: meaningService.createMeaningByWordText,
+  createByWordText: (userId, wordText, meaningText, isPublic) => {
+    console.log(`意味テキスト: "${meaningText}"`); // デバッグログ
+    return meaningService.createMeaningByWordText(userId, wordText, meaningText, isPublic);
+  },
   update: meaningService.updateMeaning,
   delete: meaningService.deleteMeaning
 };
@@ -27,7 +30,10 @@ const memoryHookServiceExt = {
   getByWord: memoryHookService.getMemoryHooksByWord,
   getByWordText: memoryHookService.getMemoryHooksByWordText,
   getMy: memoryHookService.getMyMemoryHooks,
-  createByWordText: memoryHookService.createMemoryHookByWordText,
+  createByWordText: (userId, wordText, hookText, isPublic) => {
+    console.log(`記憶hookテキスト: "${hookText}"`); // デバッグログ
+    return memoryHookService.createMemoryHookByWordText(userId, wordText, hookText, isPublic);
+  },
   update: memoryHookService.updateMemoryHook,
   delete: memoryHookService.deleteMemoryHook
 };

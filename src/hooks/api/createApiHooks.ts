@@ -73,10 +73,15 @@ export function createApiHooks<EntityType, ServiceType>(
     return useMutation({
       mutationFn: async (data: {
         wordText: string;
-        text: string;
+        meaningText?: string;
+        hookText?: string;
+        text?: string;
         isPublic: boolean;
       }) => {
         if (!user?.user_id) throw new Error('ログインが必要です');
+        
+        // textフィールドから適切なデータを取得
+        const textContent = data.text || data.meaningText || data.hookText || '';
         
         // オフラインチェック
         if (await isOffline()) {
@@ -85,9 +90,9 @@ export function createApiHooks<EntityType, ServiceType>(
             type: `create${service.entityName}ByWordText`,
             data: { 
               userId: user.user_id, 
-              wordText: data.wordText, 
-              // @ts-ignore - サービス固有のフィールド名
-              [service.textField]: data.text, 
+              wordText: data.wordText,
+              // @ts-ignore - サービス固有のフィールド名のためignore
+              [service.textField]: textContent,
               isPublic: data.isPublic 
             },
           });
@@ -95,11 +100,13 @@ export function createApiHooks<EntityType, ServiceType>(
         }
         
         try {
+          console.log(`テキスト内容: "${textContent}"`); // デバッグログ
+          
           // @ts-ignore - serviceの型が完全に一致しないためignore
           const entity = await service.createByWordText(
             user.user_id, 
             data.wordText, 
-            data.text, 
+            textContent,  // ここで正しいテキスト内容を渡す
             data.isPublic
           );
           
@@ -135,11 +142,16 @@ export function createApiHooks<EntityType, ServiceType>(
     return useMutation({
       mutationFn: async (data: {
         id: number;
-        text: string;
+        text?: string;
+        meaningText?: string;
+        hookText?: string;
         isPublic: boolean;
         wordId: number;
       }) => {
         if (!user?.user_id) throw new Error('ログインが必要です');
+        
+        // textフィールドから適切なデータを取得
+        const textContent = data.text || data.meaningText || data.hookText || '';
         
         // オフラインチェック
         if (await isOffline()) {
@@ -151,7 +163,7 @@ export function createApiHooks<EntityType, ServiceType>(
               [service.idField]: data.id, 
               userId: user.user_id, 
               // @ts-ignore - サービス固有のフィールド名
-              [service.textField]: data.text, 
+              [service.textField]: textContent, 
               isPublic: data.isPublic 
             },
           });
@@ -159,7 +171,7 @@ export function createApiHooks<EntityType, ServiceType>(
         }
         
         // @ts-ignore - serviceの型が完全に一致しないためignore
-        return service.update(data.id, user.user_id, data.text, data.isPublic);
+        return service.update(data.id, user.user_id, textContent, data.isPublic);
       },
       onSuccess: (_, variables) => {
         // 成功したら関連するキャッシュを無効化

@@ -66,9 +66,11 @@ const WordDetailScreen = () => {
   // 意味作成ハンドラ
   const handleCreateMeaning = async (meaningText, isPublic) => {
     try {
+      console.log(`意味作成: "${meaningText}"`); // デバッグログを追加
+      
       await createMeaning.mutateAsync({
         wordText: word,
-        text: meaningText,
+        meaningText: meaningText, // 明示的にmeaningTextとして渡す
         isPublic
       });
       
@@ -84,9 +86,11 @@ const WordDetailScreen = () => {
   // 記憶hook作成ハンドラ
   const handleCreateMemoryHook = async (hookText, isPublic) => {
     try {
+      console.log(`記憶hook作成: "${hookText}"`); // デバッグログを追加
+      
       await createMemoryHook.mutateAsync({
         wordText: word,
-        text: hookText,
+        hookText: hookText, // 明示的にhookTextとして渡す
         isPublic
       });
       
