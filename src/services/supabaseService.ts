@@ -58,37 +58,10 @@ export const userService = {
   // ユーザーを論理削除
   deleteUser: async (userId: string): Promise<boolean> => {
     try {
-      const now = new Date().toISOString();
+      // RPC関数を使用してユーザーを削除
+      const { data, error } = await supabase.rpc('delete_user');
       
-      // トランザクション的に複数の更新を実行
-      const { error: userError } = await supabase
-        .from('users')
-        .update({ deleted_at: now })
-        .eq('user_id', userId);
-      
-      if (userError) throw userError;
-      
-      // 関連データも論理削除
-      await Promise.all([
-        supabase.from('meanings')
-          .update({ 
-            deleted_at: now,
-            meaning: '削除済み: ' + Math.random().toString(36).substring(2, 15) 
-          })
-          .eq('user_id', userId),
-          
-        supabase.from('memory_hooks')
-          .update({ 
-            deleted_at: now,
-            memory_hook: '削除済み: ' + Math.random().toString(36).substring(2, 15) 
-          })
-          .eq('user_id', userId),
-          
-        supabase.from('user_words')
-          .update({ deleted_at: now })
-          .eq('user_id', userId),
-      ]);
-      
+      if (error) throw error;
       return true;
     } catch (error) {
       console.error('ユーザー削除エラー:', error);
@@ -485,24 +458,15 @@ export const meaningService = {
     }
   },
   
-  // 意味を論理削除
+  // 意味を論理削除 - RPC関数を使用
   deleteMeaning: async (meaningId: number, userId: string): Promise<boolean> => {
     try {
-      const now = new Date().toISOString();
-      const randomSuffix = Math.random().toString(36).substring(2, 15);
-      
-      const { error } = await supabase
-        .from('meanings')
-        .update({
-          deleted_at: now,
-          meaning: `削除済み: ${randomSuffix}`,
-          is_public: false
-        })
-        .eq('meaning_id', meaningId)
-        .eq('user_id', userId);
+      // RPC関数を呼び出す
+      const { data, error } = await supabase
+        .rpc('delete_meaning', { p_meaning_id: meaningId });
       
       if (error) throw error;
-      return true;
+      return !!data; // trueまたはfalseを返す
     } catch (error) {
       console.error('意味削除エラー:', error);
       return false;
@@ -671,24 +635,15 @@ export const memoryHookService = {
     }
   },
   
-  // 記憶Hookを論理削除
+  // 記憶Hookを論理削除 - RPC関数を使用
   deleteMemoryHook: async (hookId: number, userId: string): Promise<boolean> => {
     try {
-      const now = new Date().toISOString();
-      const randomSuffix = Math.random().toString(36).substring(2, 15);
-      
-      const { error } = await supabase
-        .from('memory_hooks')
-        .update({
-          deleted_at: now,
-          memory_hook: `削除済み: ${randomSuffix}`,
-          is_public: false
-        })
-        .eq('memory_hook_id', hookId)
-        .eq('user_id', userId);
+      // RPC関数を呼び出す
+      const { data, error } = await supabase
+        .rpc('delete_memory_hook', { p_hook_id: hookId });
       
       if (error) throw error;
-      return true;
+      return !!data; // trueまたはfalseを返す
     } catch (error) {
       console.error('記憶Hook削除エラー:', error);
       return false;
@@ -824,44 +779,22 @@ export const userWordService = {
     }
   },
   
-  // 単語帳から削除（論理削除）
+  // 単語帳から削除（論理削除） - RPC関数を使用
   removeFromWordbook: async (userId: string, userWordsId: number): Promise<boolean> => {
     try {
       console.log(`削除処理開始: user_id=${userId}, user_words_id=${userWordsId}`);
       
-      // まず対象レコードが存在するか確認し、deleted_atがnullのレコードのみを対象とする
-      const { data: record, error: findError } = await supabase
-        .from('user_words')
-        .select('*')
-        .eq('user_words_id', userWordsId)
-        .eq('user_id', userId)
-        .is('deleted_at', null)
-        .single();
-      
-      if (findError) {
-        console.error('レコード検索エラー:', findError);
-        return false;
-      }
-      
-      if (!record) {
-        console.error('対象レコードが見つかりません');
-        return false;
-      }
-      
-      // 次に更新を実行（user_idの条件も含める）
-      const { error } = await supabase
-        .from('user_words')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('user_words_id', userWordsId)
-        .eq('user_id', userId);  // RLSポリシーに対応するため、user_idの条件も必須
+      // RPC関数を呼び出す
+      const { data, error } = await supabase
+        .rpc('remove_from_wordbook', { p_user_words_id: userWordsId });
       
       if (error) {
-        console.error('Supabase更新エラー:', error);
+        console.error('Supabase RPC エラー:', error);
         throw error;
       }
       
       console.log('削除処理成功');
-      return true;
+      return !!data; // trueまたはfalseを返す
     } catch (error) {
       console.error('単語帳削除エラー:', error);
       return false;
