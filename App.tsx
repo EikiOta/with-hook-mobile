@@ -11,25 +11,6 @@ import Constants from 'expo-constants';
 import OfflineSyncManager from './src/components/OfflineSyncManager';
 import * as Linking from 'expo-linking';
 
-// React Queryの永続化設定
-persistQueryClient({
-  queryClient,
-  persister: asyncStoragePersister,
-  maxAge: 1000 * 60 * 60 * 24 * 7, // 1週間
-});
-
-// グローバルの初期化（一度だけ実行）
-const initializeApp = async () => {
-  // Supabase接続テスト
-  await testSupabaseConnection();
-  
-  // オフラインミューテーションプロセッサをセットアップ
-  setupMutationQueueProcessor();
-
-  // Deep Linkハンドラーを設定
-  setupDeepLinkHandlers();
-};
-
 // Supabase接続テスト関数
 const testSupabaseConnection = async () => {
   console.log('=== Supabase接続テスト開始 ===');
@@ -119,10 +100,34 @@ const setupDeepLinkHandlers = async () => {
   console.log('リンクプレフィックス:', prefix);
 };
 
-// アプリ初期化を実行（アプリコンポーネントの外で）
-initializeApp();
-
 export default function App() {
+  // アプリ初期化
+  useEffect(() => {
+    const initializeApp = async () => {
+      try {
+        // Supabase接続テスト
+        await testSupabaseConnection();
+        
+        // React Queryの永続化設定（useEffect内で一度だけ実行）
+        await persistQueryClient({
+          queryClient,
+          persister: asyncStoragePersister,
+          maxAge: 1000 * 60 * 60 * 24 * 7, // 1週間
+        });
+        
+        // オフラインミューテーションプロセッサをセットアップ
+        setupMutationQueueProcessor();
+  
+        // Deep Linkハンドラーを設定
+        setupDeepLinkHandlers();
+      } catch (error) {
+        console.error("初期化エラー:", error);
+      }
+    };
+
+    initializeApp();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <PaperProvider theme={theme}>

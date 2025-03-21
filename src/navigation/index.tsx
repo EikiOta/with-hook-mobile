@@ -12,7 +12,7 @@ import LoginScreen from '../screens/LoginScreen';
 import RecoverAccountScreen from '../screens/RecoverAccountScreen';
 import HomeScreen from '../screens/HomeScreen';
 import WordSearchScreen from '../screens/WordSearchScreen';
-import WordDetailScreen from '../screens/WordDetailScreen';
+import WordDetailScreen from '../screens/WordDetailScreen'; // 正しくインポートされているか確認
 import MyWordbookScreen from '../screens/MyWordbookScreen';
 import ManagementScreen from '../screens/ManagementScreen';
 import SettingsScreen from '../screens/SettingsScreen';
@@ -108,7 +108,7 @@ const MainNavigator = () => {
       />
       <MainStack.Screen
         name="WordDetail"
-        component={WordDetailScreen}
+        component={WordDetailScreen} // 有効なReactコンポーネントであることを確認
         options={({ route }) => ({ 
           title: route.params?.word || '単語詳細' 
         })}

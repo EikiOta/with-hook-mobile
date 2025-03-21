@@ -1,4 +1,42 @@
-// src/hooks/useQueryClient.ts - プロセスミューテーションキュー部分のみ抜粋
+// src/hooks/useQueryClient.ts
+import { QueryClient } from '@tanstack/react-query';
+import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { userService, meaningService, memoryHookService, userWordService } from '../services/supabaseService';
+
+// クエリキャッシュとミューテーションキューのストレージキー
+const QUERY_CACHE_KEY = 'WITHHOOK_QUERY_CACHE';
+const MUTATION_QUEUE_KEY = 'WITHHOOK_MUTATION_QUEUE';
+
+// QueryClientの作成
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5分間はキャッシュを新鮮として扱う
+      gcTime: 1000 * 60 * 60, // 1時間キャッシュを保持
+      retry: 3,
+      retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000),
+      onError: (err) => {
+        console.error('Query error:', err);
+      },
+    },
+    mutations: {
+      retry: 1,
+      onError: (err) => {
+        console.error('Mutation error:', err);
+      },
+    },
+  },
+});
+
+// AsyncStorageを使用した永続化設定
+export const asyncStoragePersister = createAsyncStoragePersister({
+  storage: AsyncStorage,
+  key: QUERY_CACHE_KEY,
+  // シリアライズ/デシリアライズにJSON.stringifyとJSON.parseを使用
+  serialize: data => JSON.stringify(data),
+  deserialize: data => JSON.parse(data),
+});
 
 // ミューテーションタイプを明示的に定義
 export type MutationType = 
@@ -50,26 +88,73 @@ export const addToMutationQueue = async (
   }
 };
 
+// ミューテーションキューのサイズを取得する関数
+export const getMutationQueueSize = async (): Promise<number> => {
+  try {
+    const queueString = await AsyncStorage.getItem(MUTATION_QUEUE_KEY);
+    const queue: OfflineMutation[] = queueString ? JSON.parse(queueString) : [];
+    return queue.length;
+  } catch (error) {
+    console.error('Error getting mutation queue size:', error);
+    return 0;
+  }
+};
+
+// ミューテーションキューを削除する関数
+export const clearMutationQueue = async (): Promise<boolean> => {
+  try {
+    await AsyncStorage.removeItem(MUTATION_QUEUE_KEY);
+    return true;
+  } catch (error) {
+    console.error('Error clearing mutation queue:', error);
+    return false;
+  }
+};
+
+// ミューテーションプロセッサをセットアップする関数
+export const setupMutationQueueProcessor = () => {
+  console.log('Setting up mutation queue processor...');
+  
+  // 起動時に一度処理を実行
+  setTimeout(async () => {
+    try {
+      await processMutationQueue();
+    } catch (error) {
+      console.error('Initial mutation queue processing error:', error);
+    }
+  }, 5000); // 起動から5秒後に実行
+  
+  // 定期的にミューテーションキューを処理する（5分ごと）
+  const intervalId = setInterval(async () => {
+    try {
+      await processMutationQueue();
+    } catch (error) {
+      console.error('Error processing mutation queue:', error);
+    }
+  }, 5 * 60 * 1000);
+
+  return () => clearInterval(intervalId);
+};
+
 // 各タイプのミューテーション処理を実行する関数
 const processMutationByType = async (
-  mutation: OfflineMutation, 
-  services: Record<string, any>
+  mutation: OfflineMutation
 ): Promise<boolean> => {
   const { type, data } = mutation;
   
   try {
     switch (type) {
       case 'updateProfile':
-        return await services.userService.updateProfile(
+        return await userService.updateProfile(
           data.userId,
           data.data
         );
           
       case 'deleteUser':
-        return await services.userService.deleteUser(data.userId);
+        return await userService.deleteUser(data.userId);
           
       case 'createMeaningByWordText':
-        const meaning = await services.meaningService.createMeaningByWordText(
+        const meaning = await meaningService.createMeaningByWordText(
           data.userId,
           data.wordText,
           data.meaningText,
@@ -78,7 +163,7 @@ const processMutationByType = async (
         return !!meaning;
           
       case 'updateMeaning':
-        return await services.meaningService.updateMeaning(
+        return await meaningService.updateMeaning(
           data.meaningId,
           data.userId,
           data.meaningText,
@@ -86,13 +171,13 @@ const processMutationByType = async (
         );
           
       case 'deleteMeaning':
-        return await services.meaningService.deleteMeaning(
+        return await meaningService.deleteMeaning(
           data.meaningId,
           data.userId
         );
           
       case 'createMemoryHookByWordText':
-        const hook = await services.memoryHookService.createMemoryHookByWordText(
+        const hook = await memoryHookService.createMemoryHookByWordText(
           data.userId,
           data.wordText,
           data.hookText,
@@ -101,7 +186,7 @@ const processMutationByType = async (
         return !!hook;
           
       case 'updateMemoryHook':
-        return await services.memoryHookService.updateMemoryHook(
+        return await memoryHookService.updateMemoryHook(
           data.hookId,
           data.userId,
           data.hookText,
@@ -109,13 +194,13 @@ const processMutationByType = async (
         );
           
       case 'deleteMemoryHook':
-        return await services.memoryHookService.deleteMemoryHook(
+        return await memoryHookService.deleteMemoryHook(
           data.hookId,
           data.userId
         );
           
       case 'saveToWordbook':
-        const userWord = await services.userWordService.saveToWordbook(
+        const userWord = await userWordService.saveToWordbook(
           data.userId,
           data.wordId,
           data.meaningId,
@@ -124,7 +209,7 @@ const processMutationByType = async (
         return !!userWord;
           
       case 'saveToWordbookByText':
-        const userWordByText = await services.userWordService.saveToWordbookByText(
+        const userWordByText = await userWordService.saveToWordbookByText(
           data.userId,
           data.wordText,
           data.meaningId,
@@ -133,7 +218,7 @@ const processMutationByType = async (
         return !!userWordByText;
           
       case 'removeFromWordbook':
-        return await services.userWordService.removeFromWordbook(
+        return await userWordService.removeFromWordbook(
           data.userId,
           data.userWordsId
         );
@@ -148,7 +233,7 @@ const processMutationByType = async (
   }
 };
 
-// キューからミューテーションを取得して実行する関数（改善版）
+// キューからミューテーションを取得して実行する関数
 export const processMutationQueue = async (): Promise<string[]> => {
   try {
     const queueString = await AsyncStorage.getItem(MUTATION_QUEUE_KEY);
@@ -162,18 +247,10 @@ export const processMutationQueue = async (): Promise<string[]> => {
     // 処理に成功したミューテーションのIDリスト
     const processedIds: string[] = [];
     
-    // サービスをまとめる
-    const services = {
-      userService,
-      meaningService,
-      memoryHookService,
-      userWordService
-    };
-    
     // ミューテーションを順番に実行
     for (const mutation of queue) {
       try {
-        const success = await processMutationByType(mutation, services);
+        const success = await processMutationByType(mutation);
         
         if (success) {
           // 成功したらIDを記録

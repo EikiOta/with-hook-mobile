@@ -1,7 +1,6 @@
-// src/screens/WordDetailScreen.tsx の改善版（一部抜粋）
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { Divider, Button, Chip, ActivityIndicator, Card } from 'react-native-paper';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { Card, Button, Divider, Chip } from 'react-native-paper';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { 
   useExternalDictionary, 
@@ -12,10 +11,10 @@ import {
   useSaveToWordbook, 
   useCheckWordInWordbook
 } from '../hooks/api';
-import MeaningForm from '../components/MeaningForm';
-import MemoryHookForm from '../components/MemoryHookForm';
 import { useAuthStore } from '../stores/authStore';
 import { toast } from '../utils/toast';
+import MeaningForm from '../components/MeaningForm';
+import MemoryHookForm from '../components/MemoryHookForm';
 
 /**
  * WordDetailScreen - 単語詳細画面
@@ -25,7 +24,8 @@ const WordDetailScreen = () => {
   // パラメータから単語を取得
   const route = useRoute();
   const navigation = useNavigation();
-  const { word } = route.params;
+  // @ts-ignore - route.paramsの型エラーを無視
+  const { word } = route.params || { word: '' };
   const { user } = useAuthStore();
   
   // 表示状態管理
@@ -77,7 +77,7 @@ const WordDetailScreen = () => {
       toast.success('意味を作成しました');
     } catch (error) {
       console.error('意味作成エラー:', error);
-      Alert.alert('エラー', error.message || '意味の作成に失敗しました');
+      toast.error(error?.message || '意味の作成に失敗しました');
     }
   };
   
@@ -95,14 +95,14 @@ const WordDetailScreen = () => {
       toast.success('記憶hookを作成しました');
     } catch (error) {
       console.error('記憶hook作成エラー:', error);
-      Alert.alert('エラー', error.message || '記憶hookの作成に失敗しました');
+      toast.error(error?.message || '記憶hookの作成に失敗しました');
     }
   };
   
   // 単語帳保存ハンドラ
   const handleSaveToMyWords = async () => {
     if (!selectedMeaning) {
-      Alert.alert('エラー', '意味を選択してください');
+      toast.error('意味を選択してください');
       return;
     }
     
@@ -113,21 +113,21 @@ const WordDetailScreen = () => {
         memoryHookId: selectedMemoryHook?.memory_hook_id
       });
       
-      Alert.alert(
-        '成功', 
-        'My単語帳に保存しました',
-        [
-          { 
-            text: 'OK', 
-            onPress: () => navigation.navigate('MainTabs', { screen: 'MyWordbook' })
-          }
-        ]
-      );
+      toast.success('My単語帳に保存しました');
+      // @ts-ignore - navigationの型エラーを無視
+      navigation.navigate('MainTabs', { screen: 'MyWordbook' });
     } catch (error) {
       console.error('単語帳保存エラー:', error);
-      Alert.alert('エラー', error.message || '保存に失敗しました');
+      toast.error(error?.message || '保存に失敗しました');
     }
   };
+  
+  // 初期意味選択
+  useEffect(() => {
+    if (meaningData?.meanings?.length > 0 && !selectedMeaning) {
+      setSelectedMeaning(meaningData.meanings[0]);
+    }
+  }, [meaningData, selectedMeaning]);
   
   // ローディング表示
   const isLoading = isDictLoading || isMeaningLoading || isHooksLoading || isCheckingWordbook;
@@ -144,16 +144,122 @@ const WordDetailScreen = () => {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'definition':
-        return renderDefinitionTab();
+        return (
+          <View style={styles.tabContent}>
+            {dictionaryData && dictionaryData.length > 0 ? (
+              dictionaryData.map((entry, index) => (
+                <Card key={index} style={styles.definitionCard}>
+                  <Card.Content>
+                    <Text style={styles.wordTitle}>{entry.word}</Text>
+                    {entry.phonetics && entry.phonetics.length > 0 && entry.phonetics[0].text && (
+                      <Text style={styles.phonetic}>{entry.phonetics[0].text}</Text>
+                    )}
+                    {entry.meanings && entry.meanings.map((meaning, mIndex) => (
+                      <View key={mIndex} style={styles.meaningBlock}>
+                        <Text style={styles.partOfSpeech}>{meaning.partOfSpeech}</Text>
+                        {meaning.definitions && meaning.definitions.map((def, dIndex) => (
+                          <View key={dIndex} style={styles.definition}>
+                            <Text>{dIndex + 1}. {def.definition}</Text>
+                            {def.example && <Text style={styles.example}>例: {def.example}</Text>}
+                          </View>
+                        ))}
+                      </View>
+                    ))}
+                  </Card.Content>
+                </Card>
+              ))
+            ) : (
+              <Text>辞書データがありません</Text>
+            )}
+          </View>
+        );
       case 'meanings':
-        return renderMeaningsTab();
+        return (
+          <View style={styles.tabContent}>
+            <Button
+              mode="contained"
+              onPress={() => setShowMeaningForm(true)}
+              style={styles.addButton}
+            >
+              意味の新規作成
+            </Button>
+            
+            {meaningData?.meanings?.length > 0 ? (
+              meaningData.meanings.map((meaning, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.itemCard,
+                    selectedMeaning?.meaning_id === meaning.meaning_id && styles.selectedCard
+                  ]}
+                  onPress={() => setSelectedMeaning(meaning)}
+                >
+                  <Text style={styles.itemTitle}>意味 #{index + 1}</Text>
+                  <Text>{meaning.meaning}</Text>
+                  <View style={styles.itemFooter}>
+                    <Chip mode="outlined">{meaning.is_public ? '公開' : '非公開'}</Chip>
+                    <Text style={styles.itemAuthor}>
+                      作成者: {meaning.user_id === user?.user_id ? 'あなた' : '他のユーザー'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>登録された意味はありません</Text>
+            )}
+          </View>
+        );
       case 'hooks':
-        return renderHooksTab();
+        return (
+          <View style={styles.tabContent}>
+            <View style={styles.buttonRow}>
+              <Button
+                mode="contained"
+                onPress={() => setShowHookForm(true)}
+                style={styles.addButton}
+              >
+                記憶hookの新規作成
+              </Button>
+              
+              <Button
+                mode="outlined"
+                onPress={() => setSelectedMemoryHook(null)}
+                style={styles.clearButton}
+              >
+                選択解除
+              </Button>
+            </View>
+            
+            {hooksData?.hooks?.length > 0 ? (
+              hooksData.hooks.map((hook, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.itemCard,
+                    selectedMemoryHook?.memory_hook_id === hook.memory_hook_id && styles.selectedCard
+                  ]}
+                  onPress={() => setSelectedMemoryHook(hook)}
+                >
+                  <Text style={styles.itemTitle}>記憶hook #{index + 1}</Text>
+                  <Text>{hook.memory_hook}</Text>
+                  <View style={styles.itemFooter}>
+                    <Chip mode="outlined">{hook.is_public ? '公開' : '非公開'}</Chip>
+                    <Text style={styles.itemAuthor}>
+                      作成者: {hook.user_id === user?.user_id ? 'あなた' : '他のユーザー'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>登録された記憶hookはありません</Text>
+            )}
+          </View>
+        );
       default:
         return null;
     }
   };
-  
+
   return (
     <ScrollView style={styles.container}>
       <Card style={styles.wordCard}>
@@ -210,6 +316,10 @@ const WordDetailScreen = () => {
         >
           {wordInWordbook ? 'My単語帳へ更新' : 'My単語帳に追加'}
         </Button>
+        
+        <Text style={styles.tipText}>
+          ※意味が選択されていないと押せない仕様
+        </Text>
       </View>
       
       {/* フォームモーダル */}
@@ -231,3 +341,144 @@ const WordDetailScreen = () => {
     </ScrollView>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+  },
+  wordCard: {
+    margin: 10,
+    marginBottom: 5,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    margin: 10,
+    marginTop: 5,
+    borderRadius: 5,
+    overflow: 'hidden',
+    backgroundColor: '#ddd',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  activeTab: {
+    backgroundColor: '#3498db',
+  },
+  tabText: {
+    fontWeight: '500',
+  },
+  contentContainer: {
+    margin: 10,
+    marginTop: 5,
+  },
+  tabContent: {
+    backgroundColor: 'white',
+    padding: 15,
+    borderRadius: 5,
+  },
+  definitionCard: {
+    marginBottom: 10,
+  },
+  wordTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  phonetic: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 10,
+  },
+  meaningBlock: {
+    marginBottom: 15,
+  },
+  partOfSpeech: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  definition: {
+    marginBottom: 8,
+    paddingLeft: 10,
+  },
+  example: {
+    fontStyle: 'italic',
+    color: '#666',
+    paddingLeft: 15,
+  },
+  addButton: {
+    marginBottom: 15,
+  },
+  clearButton: {
+    marginBottom: 15,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  itemCard: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 5,
+    padding: 15,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  selectedCard: {
+    backgroundColor: '#e3f2fd',
+    borderColor: '#2196f3',
+  },
+  itemTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  itemFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  itemAuthor: {
+    fontSize: 12,
+    color: '#666',
+  },
+  emptyText: {
+    textAlign: 'center',
+    padding: 20,
+    color: '#666',
+  },
+  actionContainer: {
+    backgroundColor: 'white',
+    margin: 10,
+    padding: 15,
+    borderRadius: 5,
+  },
+  selectionSummary: {
+    marginBottom: 10,
+  },
+  saveButton: {
+    marginBottom: 10,
+  },
+  tipText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+  },
+});
+
+export default WordDetailScreen;

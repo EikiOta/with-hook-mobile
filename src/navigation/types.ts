@@ -1,5 +1,4 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
-import { WordDetailParams } from '../types';
 
 // メインタブのルート定義
 export type MainTabParamList = {
@@ -14,6 +13,12 @@ export type MainTabParamList = {
 export type AuthStackParamList = {
   Login: undefined;
   RecoverAccount: undefined;
+};
+
+// 単語詳細パラメータの型定義を追加
+export type WordDetailParams = {
+  word: string;
+  wordId?: number;
 };
 
 // メインスタックのルート定義
