@@ -10,30 +10,42 @@ interface OfflineSyncManagerProps {
   children: React.ReactNode;
 }
 
+interface SyncState {
+  syncVisible: boolean;
+  offlineVisible: boolean;
+  syncMessage: string;
+}
+
 const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ children }) => {
-  const { isConnected, pendingMutations, checkConnection } = useNetworkStatus();
-  const [syncSnackVisible, setSyncSnackVisible] = useState(false);
-  const [offlineSnackVisible, setOfflineSnackVisible] = useState(false);
-  const [syncMessage, setSyncMessage] = useState('');
+  const { isConnected } = useNetworkStatus();
+  const [syncState, setSyncState] = useState<SyncState>({
+    syncVisible: false,
+    offlineVisible: false,
+    syncMessage: ''
+  });
   
   // オフライン状態の変化を監視
   useEffect(() => {
-    if (!isConnected) {
-      setOfflineSnackVisible(true);
-    } else {
-      setOfflineSnackVisible(false);
-      // オンラインになった時にキューを確認
+    setSyncState(prev => ({
+      ...prev,
+      offlineVisible: !isConnected
+    }));
+    
+    if (isConnected) {
       checkQueuedMutations();
     }
   }, [isConnected]);
   
-  // キューされたミューテーションの確認
+  // キューされたミューテーションの確認と処理
   const checkQueuedMutations = useCallback(async () => {
     const queueSize = await getMutationQueueSize();
     
     if (queueSize > 0) {
-      setSyncMessage(`${queueSize}件の保存待ち操作を同期しています...`);
-      setSyncSnackVisible(true);
+      setSyncState(prev => ({
+        ...prev,
+        syncVisible: true,
+        syncMessage: `${queueSize}件の保存待ち操作を同期しています...`
+      }));
       
       // オンラインならミューテーションを処理
       const netInfo = await NetInfo.fetch();
@@ -41,11 +53,17 @@ const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ children }) => 
         const processed = await processMutationQueue();
         
         if (processed.length > 0) {
-          setSyncMessage(`${processed.length}件の操作を同期しました`);
+          setSyncState(prev => ({
+            ...prev,
+            syncMessage: `${processed.length}件の操作を同期しました`
+          }));
+          
           // 少し待ってから非表示に
-          setTimeout(() => setSyncSnackVisible(false), 3000);
+          setTimeout(() => {
+            setSyncState(prev => ({ ...prev, syncVisible: false }));
+          }, 3000);
         } else {
-          setSyncSnackVisible(false);
+          setSyncState(prev => ({ ...prev, syncVisible: false }));
         }
       }
     }
@@ -81,11 +99,11 @@ const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ children }) => 
       
       {/* オフライン通知 */}
       <Snackbar
-        visible={offlineSnackVisible}
-        onDismiss={() => setOfflineSnackVisible(false)}
+        visible={syncState.offlineVisible}
+        onDismiss={() => setSyncState(prev => ({ ...prev, offlineVisible: false }))}
         action={{
           label: '確認',
-          onPress: () => setOfflineSnackVisible(false),
+          onPress: () => setSyncState(prev => ({ ...prev, offlineVisible: false })),
         }}
         duration={Infinity}
         style={styles.offlineSnack}
@@ -103,8 +121,8 @@ const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ children }) => 
       
       {/* 同期通知 */}
       <Snackbar
-        visible={syncSnackVisible}
-        onDismiss={() => setSyncSnackVisible(false)}
+        visible={syncState.syncVisible}
+        onDismiss={() => setSyncState(prev => ({ ...prev, syncVisible: false }))}
         duration={5000}
         style={styles.syncSnack}
       >
@@ -115,7 +133,7 @@ const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ children }) => 
             iconColor="#fff"
             style={styles.snackIcon}
           />
-          <Text style={styles.snackText}>{syncMessage}</Text>
+          <Text style={styles.snackText}>{syncState.syncMessage}</Text>
         </View>
       </Snackbar>
     </View>

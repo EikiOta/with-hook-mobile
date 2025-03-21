@@ -20,16 +20,28 @@ persistQueryClient({
 
 // グローバルの初期化（一度だけ実行）
 const initializeApp = async () => {
+  // Supabase接続テスト
+  await testSupabaseConnection();
+  
+  // オフラインミューテーションプロセッサをセットアップ
+  setupMutationQueueProcessor();
+
+  // Deep Linkハンドラーを設定
+  setupDeepLinkHandlers();
+};
+
+// Supabase接続テスト関数
+const testSupabaseConnection = async () => {
   console.log('=== Supabase接続テスト開始 ===');
   console.log('Supabase URL:', Constants.expoConfig?.extra?.supabaseUrl);
   
   try {
-    // 単純な接続テスト
+    // 認証サービス接続テスト
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     console.log('認証サービス接続テスト:', sessionError ? '失敗' : '成功');
     
     try {
-      // ユーザーテーブルへの接続テスト
+      // ユーザーテーブル接続テスト
       const { data: usersData, error: usersError } = await supabase.from('users').select('count').limit(1);
       console.log('ユーザーテーブル接続テスト:', usersError ? '失敗' : '成功');
       
@@ -45,54 +57,29 @@ const initializeApp = async () => {
     console.error('Supabaseテスト例外:', e);
   }
   console.log('=== Supabase接続テスト終了 ===');
-  
-  // オフラインミューテーションプロセッサをセットアップ
-  setupMutationQueueProcessor();
+};
 
-  // Deep Linkハンドラーを設定
-  const handleDeepLink = async (event) => {
-    console.log('=== 着信リンク検出 ===');
-    console.log('URL:', event.url);
-
+// Deep Linkハンドラーのセットアップ
+const setupDeepLinkHandlers = async () => {
+  // Deep Linkハンドラー
+  const handleDeepLink = async (event: { url: string }) => {
     try {
       // URLパラメータを解析
       const url = new URL(event.url);
-      console.log('パス:', url.pathname);
-      console.log('クエリパラメータ:', url.search);
-      console.log('URLフラグメント:', url.hash);
-      
-      // クエリパラメータを確認
-      const params = new URLSearchParams(url.search);
-      console.log('クエリ - access_token存在:', params.has('access_token'));
-      console.log('クエリ - refresh_token存在:', params.has('refresh_token'));
       
       // フラグメントを解析（#を除去して処理）
       if (url.hash) {
         const hashParams = new URLSearchParams(url.hash.substring(1));
-        console.log('フラグメント - access_token存在:', hashParams.has('access_token'));
-        console.log('フラグメント - refresh_token存在:', hashParams.has('refresh_token'));
         
         // アクセストークンがフラグメントにある場合
         if (hashParams.has('access_token') && hashParams.has('refresh_token')) {
           console.log('認証トークンをフラグメントから検出しました');
           
-          // 手動でセッションを設定
-          const session = {
-            access_token: hashParams.get('access_token'),
-            refresh_token: hashParams.get('refresh_token'),
-            expires_in: parseInt(hashParams.get('expires_in') || '3600'),
-            token_type: hashParams.get('token_type') || 'bearer',
-            provider_token: hashParams.get('provider_token'),
-            provider_refresh_token: hashParams.get('provider_refresh_token')
-          };
-          
           try {
-            console.log('セッションを手動で設定します...');
-            
             // セッションを手動で設定
             const { error } = await supabase.auth.setSession({
-              access_token: session.access_token,
-              refresh_token: session.refresh_token
+              access_token: hashParams.get('access_token') || '',
+              refresh_token: hashParams.get('refresh_token') || ''
             });
             
             if (error) {
@@ -107,15 +94,13 @@ const initializeApp = async () => {
       }
       
       // エラーチェック
+      const params = new URLSearchParams(url.search);
       if (params.has('error')) {
         console.error('認証エラー:', params.get('error'));
-        console.error('エラー説明:', params.get('error_description'));
       }
     } catch (error) {
       console.error('URLパース失敗:', error);
     }
-    
-    console.log('=== リンク解析終了 ===');
   };
   
   // リンクリスナーを登録
@@ -124,11 +109,10 @@ const initializeApp = async () => {
   // 起動時URLをチェック
   const initialUrl = await Linking.getInitialURL();
   if (initialUrl) {
-    console.log('起動時URL:', initialUrl);
     handleDeepLink({ url: initialUrl });
   }
 
-  // URLスキームを確認
+  // URLスキームの情報を出力
   const scheme = Constants.expoConfig?.scheme;
   const prefix = Linking.createURL('');
   console.log('アプリスキーム:', scheme);

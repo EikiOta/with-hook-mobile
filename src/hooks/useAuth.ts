@@ -31,10 +31,10 @@ export const useAuth = () => {
     };
   }, []);
 
-  // GitHub認証 - 改善版
-  const loginWithGithub = useCallback(async () => {
+  // OAuth認証共通ロジック
+  const loginWithOAuth = useCallback(async (provider: 'google' | 'github') => {
     try {
-      console.log('[AUTH] GitHub認証開始');
+      console.log(`[AUTH] ${provider}認証開始`);
       
       // アプリスキームを使用したリダイレクトURLを構築
       const redirectUrl = Linking.createURL('login-callback');
@@ -42,7 +42,7 @@ export const useAuth = () => {
       
       // ブラウザでログインを実行
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'github',
+        provider,
         options: {
           redirectTo: redirectUrl, // 明示的にリダイレクトURLを指定
           skipBrowserRedirect: true // ブラウザ自動リダイレクトをスキップして手動で処理
@@ -58,7 +58,7 @@ export const useAuth = () => {
         throw new Error('認証URLの取得に失敗しました');
       }
       
-      console.log('[AUTH] 認証URLを開きます:', data.url);
+      console.log('[AUTH] 認証URLを開きます');
       
       // ブラウザでOAuth認証を開始し、結果を待つ
       const result = await WebBrowser.openAuthSessionAsync(
@@ -79,7 +79,6 @@ export const useAuth = () => {
         // URLを解析して認証情報を取得
         try {
           const callbackUrl = result.url;
-          console.log('[AUTH] コールバックURL:', callbackUrl);
           
           const url = new URL(callbackUrl);
           
@@ -93,16 +92,10 @@ export const useAuth = () => {
               
               try {
                 // セッションを手動で設定
-                const { error } = await supabase.auth.setSession({
+                await supabase.auth.setSession({
                   access_token: hashParams.get('access_token') || '',
                   refresh_token: hashParams.get('refresh_token') || ''
                 });
-                
-                if (error) {
-                  console.error('[AUTH] セッション設定エラー:', error.message);
-                } else {
-                  console.log('[AUTH] セッションが正常に設定されました');
-                }
               } catch (sessionError) {
                 console.error('[AUTH] セッション設定中の例外:', sessionError);
               }
@@ -113,15 +106,10 @@ export const useAuth = () => {
         }
         
         // セッションチェック前に少し待機して認証処理が完了するのを待つ
-        console.log('[AUTH] セッション状態の更新を待っています...');
         await new Promise(resolve => setTimeout(resolve, 2000));
         
         // セッション状態を確認
-        console.log('[AUTH] セッション状態を確認します');
         await checkSession();
-        
-        // セッション状態を再確認
-        console.log('[AUTH] 認証状態:', isAuthenticated ? '認証済み' : '未認証');
         
         return true;
       } else {
@@ -129,115 +117,21 @@ export const useAuth = () => {
         return false;
       }
     } catch (error) {
-      console.error('[AUTH] GitHub認証エラー:', error);
-      Alert.alert('エラー', 'GitHubログインに失敗しました。時間をおいて再度お試しください。');
+      console.error(`[AUTH] ${provider}認証エラー:`, error);
+      Alert.alert('エラー', `${provider}ログインに失敗しました。時間をおいて再度お試しください。`);
       return false;
     }
-  }, [checkSession, isAuthenticated]);
+  }, [checkSession]);
 
-  // Google認証 - 改善版
-  const loginWithGoogle = useCallback(async () => {
-    try {
-      console.log('[AUTH] Google認証開始');
-      
-      // アプリスキームを使用したリダイレクトURLを構築
-      const redirectUrl = Linking.createURL('login-callback');
-      console.log('[AUTH] 使用するリダイレクトURL:', redirectUrl);
-      
-      // ブラウザでログインを実行
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: redirectUrl, // 明示的にリダイレクトURLを指定
-          skipBrowserRedirect: true // ブラウザ自動リダイレクトをスキップして手動で処理
-        }
-      });
-      
-      if (error) {
-        console.error('[AUTH] 認証エラー:', error.message);
-        throw error;
-      }
-      
-      if (!data.url) {
-        throw new Error('認証URLの取得に失敗しました');
-      }
-      
-      console.log('[AUTH] 認証URLを開きます:', data.url);
-      
-      // ブラウザでOAuth認証を開始し、結果を待つ
-      const result = await WebBrowser.openAuthSessionAsync(
-        data.url,
-        redirectUrl,
-        {
-          showInRecents: true,
-          createTask: true
-        }
-      );
-      
-      console.log('[AUTH] 認証結果:', result.type);
-      
-      // 結果に基づいて処理
-      if (result.type === 'success') {
-        console.log('[AUTH] 認証成功、セッションを確認します');
-        
-        // URLを解析して認証情報を取得
-        try {
-          const callbackUrl = result.url;
-          console.log('[AUTH] コールバックURL:', callbackUrl);
-          
-          const url = new URL(callbackUrl);
-          
-          // フラグメントを解析（#を除去して処理）
-          if (url.hash) {
-            const hashParams = new URLSearchParams(url.hash.substring(1));
-            
-            // アクセストークンがフラグメントにある場合は手動で設定
-            if (hashParams.has('access_token') && hashParams.has('refresh_token')) {
-              console.log('[AUTH] トークンを検出、手動でセッションを設定します');
-              
-              try {
-                // セッションを手動で設定
-                const { error } = await supabase.auth.setSession({
-                  access_token: hashParams.get('access_token') || '',
-                  refresh_token: hashParams.get('refresh_token') || ''
-                });
-                
-                if (error) {
-                  console.error('[AUTH] セッション設定エラー:', error.message);
-                } else {
-                  console.log('[AUTH] セッションが正常に設定されました');
-                }
-              } catch (sessionError) {
-                console.error('[AUTH] セッション設定中の例外:', sessionError);
-              }
-            }
-          }
-        } catch (urlError) {
-          console.error('[AUTH] コールバックURL解析エラー:', urlError);
-        }
-        
-        // セッションチェック前に少し待機して認証処理が完了するのを待つ
-        console.log('[AUTH] セッション状態の更新を待っています...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // セッション状態を確認
-        console.log('[AUTH] セッション状態を確認します');
-        await checkSession();
-        
-        // セッション状態を再確認
-        console.log('[AUTH] 認証状態:', isAuthenticated ? '認証済み' : '未認証');
-        
-        return true;
-      } else {
-        console.log('[AUTH] 認証キャンセルまたは失敗:', result.type);
-        return false;
-      }
-    } catch (error) {
-      console.error('[AUTH] Google認証エラー:', error);
-      Alert.alert('エラー', 'Googleログインに失敗しました。時間をおいて再度お試しください。');
-      return false;
-    }
-  }, [checkSession, isAuthenticated]);
+  // Google認証
+  const loginWithGoogle = useCallback(() => {
+    return loginWithOAuth('google');
+  }, [loginWithOAuth]);
+
+  // GitHub認証
+  const loginWithGithub = useCallback(() => {
+    return loginWithOAuth('github');
+  }, [loginWithOAuth]);
 
   // デバッグ情報取得
   const getDebugInfo = useCallback(async () => {

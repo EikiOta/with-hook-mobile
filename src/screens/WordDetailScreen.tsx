@@ -1,4 +1,4 @@
-// src/screens/WordDetailScreen.tsx
+// src/screens/WordDetailScreen.tsx の改善版（一部抜粋）
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Divider, Button, Chip, ActivityIndicator, Card } from 'react-native-paper';
@@ -15,13 +15,20 @@ import {
 import MeaningForm from '../components/MeaningForm';
 import MemoryHookForm from '../components/MemoryHookForm';
 import { useAuthStore } from '../stores/authStore';
+import { toast } from '../utils/toast';
 
+/**
+ * WordDetailScreen - 単語詳細画面
+ * 単語の辞書情報、意味、記憶hookを表示・編集する
+ */
 const WordDetailScreen = () => {
+  // パラメータから単語を取得
   const route = useRoute();
   const navigation = useNavigation();
   const { word } = route.params;
   const { user } = useAuthStore();
   
+  // 表示状態管理
   const [activeTab, setActiveTab] = useState('definition');
   const [showMeaningForm, setShowMeaningForm] = useState(false);
   const [showHookForm, setShowHookForm] = useState(false);
@@ -29,42 +36,63 @@ const WordDetailScreen = () => {
   const [selectedMemoryHook, setSelectedMemoryHook] = useState(null);
   
   // データ取得フック
-  const { data: dictionaryData, isLoading: isDictLoading } = useExternalDictionary(word);
-  const { data: meaningData, isLoading: isMeaningLoading, refetch: refetchMeanings } = useMeaningsByWordText(word);
-  const { data: hooksData, isLoading: isHooksLoading, refetch: refetchHooks } = useMemoryHooksByWordText(word);
-  const { data: wordInWordbook, isLoading: isCheckingWordbook } = useCheckWordInWordbook(word);
+  const { 
+    data: dictionaryData, 
+    isLoading: isDictLoading 
+  } = useExternalDictionary(word);
+  
+  const { 
+    data: meaningData, 
+    isLoading: isMeaningLoading, 
+    refetch: refetchMeanings 
+  } = useMeaningsByWordText(word);
+  
+  const { 
+    data: hooksData, 
+    isLoading: isHooksLoading, 
+    refetch: refetchHooks 
+  } = useMemoryHooksByWordText(word);
+  
+  const { 
+    data: wordInWordbook, 
+    isLoading: isCheckingWordbook 
+  } = useCheckWordInWordbook(word);
   
   // ミューテーションフック
   const createMeaning = useCreateMeaning();
   const createMemoryHook = useCreateMemoryHook();
   const saveToWordbook = useSaveToWordbook();
   
-  // 意味作成ハンドラ - 修正版
+  // 意味作成ハンドラ
   const handleCreateMeaning = async (meaningText, isPublic) => {
     try {
       await createMeaning.mutateAsync({
         wordText: word,
-        meaningText,
+        text: meaningText,
         isPublic
       });
+      
       setShowMeaningForm(false);
       refetchMeanings();
+      toast.success('意味を作成しました');
     } catch (error) {
       console.error('意味作成エラー:', error);
       Alert.alert('エラー', error.message || '意味の作成に失敗しました');
     }
   };
   
-  // 記憶hook作成ハンドラ - 修正版
+  // 記憶hook作成ハンドラ
   const handleCreateMemoryHook = async (hookText, isPublic) => {
     try {
       await createMemoryHook.mutateAsync({
         wordText: word,
-        hookText,
+        text: hookText,
         isPublic
       });
+      
       setShowHookForm(false);
       refetchHooks();
+      toast.success('記憶hookを作成しました');
     } catch (error) {
       console.error('記憶hook作成エラー:', error);
       Alert.alert('エラー', error.message || '記憶hookの作成に失敗しました');
@@ -101,8 +129,8 @@ const WordDetailScreen = () => {
     }
   };
   
+  // ローディング表示
   const isLoading = isDictLoading || isMeaningLoading || isHooksLoading || isCheckingWordbook;
-  
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -111,6 +139,20 @@ const WordDetailScreen = () => {
       </View>
     );
   }
+  
+  // タブ表示コンテンツの切り替え
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'definition':
+        return renderDefinitionTab();
+      case 'meanings':
+        return renderMeaningsTab();
+      case 'hooks':
+        return renderHooksTab();
+      default:
+        return null;
+    }
+  };
   
   return (
     <ScrollView style={styles.container}>
@@ -123,6 +165,7 @@ const WordDetailScreen = () => {
         </Card.Content>
       </Card>
       
+      {/* タブ切り替え */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'definition' && styles.activeTab]}
@@ -146,134 +189,12 @@ const WordDetailScreen = () => {
         </TouchableOpacity>
       </View>
       
+      {/* タブコンテンツ */}
       <View style={styles.contentContainer}>
-        {activeTab === 'definition' && (
-          <View>
-            <Text style={styles.sectionTitle}>辞書定義</Text>
-            {dictionaryData ? (
-              dictionaryData[0]?.meanings?.map((meaning, index) => (
-                <Card key={index} style={styles.definitionCard}>
-                  <Card.Title 
-                    title={meaning.partOfSpeech} 
-                    subtitle={`定義${index + 1}`} 
-                  />
-                  <Card.Content>
-                    {meaning.definitions.map((def, idx) => (
-                      <View key={idx} style={styles.definition}>
-                        <Text style={styles.definitionText}>{def.definition}</Text>
-                        {def.example && (
-                          <Text style={styles.exampleText}>例: {def.example}</Text>
-                        )}
-                      </View>
-                    ))}
-                  </Card.Content>
-                </Card>
-              ))
-            ) : (
-              <Text style={styles.noDataText}>外部APIからの定義が見つかりませんでした。</Text>
-            )}
-          </View>
-        )}
-        
-        {activeTab === 'meanings' && (
-          <View>
-            <View style={styles.headerWithButton}>
-              <Text style={styles.sectionTitle}>ユーザー登録の意味</Text>
-              <Button 
-                mode="contained" 
-                onPress={() => setShowMeaningForm(true)}
-              >
-                新規作成
-              </Button>
-            </View>
-            
-            {meaningData?.meanings.length > 0 ? (
-              meaningData.meanings.map((meaning, index) => (
-                <TouchableOpacity
-                  key={meaning.meaning_id}
-                  style={[
-                    styles.meaningItem,
-                    selectedMeaning?.meaning_id === meaning.meaning_id && styles.selectedItem
-                  ]}
-                  onPress={() => setSelectedMeaning(meaning)}
-                >
-                  <View style={styles.meaningHeader}>
-                    <Text style={styles.meaningAuthor}>
-                      {meaning.user_id === user?.user_id ? '自分' : meaning.user?.nickname || '匿名'}
-                    </Text>
-                    <Chip>{meaning.is_public ? '公開' : '非公開'}</Chip>
-                  </View>
-                  <Text style={styles.meaningText}>{meaning.meaning}</Text>
-                </TouchableOpacity>
-              ))
-            ) : (
-              <Text style={styles.noDataText}>まだ意味が登録されていません。</Text>
-            )}
-            
-            {showMeaningForm && (
-              <MeaningForm
-                word={word}
-                onSubmit={handleCreateMeaning}
-                onCancel={() => setShowMeaningForm(false)}
-              />
-            )}
-          </View>
-        )}
-        
-        {activeTab === 'hooks' && (
-          <View>
-            <View style={styles.headerWithButton}>
-              <Text style={styles.sectionTitle}>記憶hook</Text>
-              <Button 
-                mode="contained" 
-                onPress={() => setShowHookForm(true)}
-              >
-                新規作成
-              </Button>
-            </View>
-            
-            <Button 
-              mode="outlined"
-              onPress={() => setSelectedMemoryHook(null)}
-              style={styles.clearButton}
-            >
-              解除
-            </Button>
-            
-            {hooksData?.hooks.length > 0 ? (
-              hooksData.hooks.map((hook, index) => (
-                <TouchableOpacity
-                  key={hook.memory_hook_id}
-                  style={[
-                    styles.hookItem,
-                    selectedMemoryHook?.memory_hook_id === hook.memory_hook_id && styles.selectedItem
-                  ]}
-                  onPress={() => setSelectedMemoryHook(hook)}
-                >
-                  <View style={styles.hookHeader}>
-                    <Text style={styles.hookAuthor}>
-                      {hook.user_id === user?.user_id ? '自分' : hook.user?.nickname || '匿名'}
-                    </Text>
-                    <Chip>{hook.is_public ? '公開' : '非公開'}</Chip>
-                  </View>
-                  <Text style={styles.hookText}>{hook.memory_hook}</Text>
-                </TouchableOpacity>
-              ))
-            ) : (
-              <Text style={styles.noDataText}>まだ記憶hookが登録されていません。</Text>
-            )}
-            
-            {showHookForm && (
-              <MemoryHookForm
-                word={word}
-                onSubmit={handleCreateMemoryHook}
-                onCancel={() => setShowHookForm(false)}
-              />
-            )}
-          </View>
-        )}
+        {renderTabContent()}
       </View>
       
+      {/* 単語帳保存 */}
       <View style={styles.actionContainer}>
         <Text style={styles.selectionSummary}>
           選択中: {selectedMeaning ? '意味あり' : '意味なし'} / 
@@ -287,150 +208,26 @@ const WordDetailScreen = () => {
           onPress={handleSaveToMyWords}
           style={styles.saveButton}
         >
-          {wordInWordbook ? 'My単語帳を更新' : 'My単語帳に追加'}
+          {wordInWordbook ? 'My単語帳へ更新' : 'My単語帳に追加'}
         </Button>
       </View>
+      
+      {/* フォームモーダル */}
+      {showMeaningForm && (
+        <MeaningForm
+          word={word}
+          onSubmit={handleCreateMeaning}
+          onCancel={() => setShowMeaningForm(false)}
+        />
+      )}
+      
+      {showHookForm && (
+        <MemoryHookForm
+          word={word}
+          onSubmit={handleCreateMemoryHook}
+          onCancel={() => setShowHookForm(false)}
+        />
+      )}
     </ScrollView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-  },
-  wordCard: {
-    margin: 16,
-    elevation: 4,
-  },
-  phonetic: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 8,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: '#ddd',
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  activeTab: {
-    backgroundColor: '#3498db',
-  },
-  tabText: {
-    fontWeight: '500',
-  },
-  contentContainer: {
-    marginHorizontal: 16,
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 12,
-  },
-  headerWithButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  clearButton: {
-    marginBottom: 16,
-  },
-  definitionCard: {
-    marginBottom: 12,
-  },
-  definition: {
-    marginBottom: 8,
-  },
-  definitionText: {
-    fontSize: 15,
-    marginBottom: 4,
-  },
-  exampleText: {
-    fontSize: 14,
-    color: '#666',
-    fontStyle: 'italic',
-  },
-  meaningItem: {
-    backgroundColor: 'white',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  selectedItem: {
-    borderColor: '#3498db',
-    borderWidth: 2,
-    backgroundColor: '#ebf5fb',
-  },
-  meaningHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  meaningAuthor: {
-    fontWeight: '500',
-  },
-  meaningText: {
-    fontSize: 15,
-  },
-  hookItem: {
-    backgroundColor: 'white',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  hookHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  hookAuthor: {
-    fontWeight: '500',
-  },
-  hookText: {
-    fontSize: 15,
-  },
-  noDataText: {
-    textAlign: 'center',
-    padding: 20,
-    color: '#666',
-  },
-  actionContainer: {
-    margin: 16,
-    padding: 16,
-    backgroundColor: 'white',
-    borderRadius: 8,
-    elevation: 2,
-  },
-  selectionSummary: {
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  saveButton: {
-    padding: 4,
-  },
-});
-
-export default WordDetailScreen;

@@ -1,54 +1,31 @@
-// src/hooks/useQueryClient.ts
-import { QueryClient } from '@tanstack/react-query';
-import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import NetInfo from '@react-native-community/netinfo';
-import { userService, meaningService, memoryHookService, userWordService } from '../services/supabaseService';
+// src/hooks/useQueryClient.ts - プロセスミューテーションキュー部分のみ抜粋
 
-// QueryClient の作成
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 5, // 5分
-      cacheTime: 1000 * 60 * 60, // 1時間
-      retry: 2,
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-      refetchOnWindowFocus: false,
-      refetchOnMount: true,
-      // オフライン対応の設定
-      refetchOnReconnect: true,
-    },
-    mutations: {
-      retry: 1,
-      retryDelay: 1000,
-    },
-  },
-});
+// ミューテーションタイプを明示的に定義
+export type MutationType = 
+  | 'createMeaningByWordText'
+  | 'updateMeaning'
+  | 'deleteMeaning'
+  | 'createMemoryHookByWordText'
+  | 'updateMemoryHook'
+  | 'deleteMemoryHook'
+  | 'saveToWordbook'
+  | 'saveToWordbookByText'
+  | 'removeFromWordbook'
+  | 'updateProfile'
+  | 'deleteUser';
 
-// AsyncStorage向けのPersisterを作成
-export const asyncStoragePersister = createAsyncStoragePersister({
-  storage: AsyncStorage,
-  key: 'REACT_QUERY_OFFLINE_CACHE',
-  // 最大キャッシュ期間を設定（7日）
-  maxAge: 1000 * 60 * 60 * 24 * 7,
-  // オプション：キャッシュのサイズ制限など
-  serialize: (data) => JSON.stringify(data),
-  deserialize: (data) => JSON.parse(data),
-});
-
-// オフラインミューテーション用のキー
-export const MUTATION_QUEUE_KEY = 'WITH_HOOK_OFFLINE_MUTATIONS';
-
-// オフラインミューテーションの型定義
-export type OfflineMutation = {
+// オフラインミューテーションのインターフェース
+export interface OfflineMutation {
   id: string;
-  type: string;
-  data: any;
+  type: MutationType;
+  data: Record<string, any>;
   timestamp: number;
-};
+}
 
 // オフラインミューテーションをキューに追加する関数
-export const addToMutationQueue = async (mutation: { type: string; data: any }) => {
+export const addToMutationQueue = async (
+  mutation: { type: MutationType; data: Record<string, any> }
+): Promise<string | null> => {
   try {
     const queueString = await AsyncStorage.getItem(MUTATION_QUEUE_KEY);
     const queue: OfflineMutation[] = queueString ? JSON.parse(queueString) : [];
@@ -73,8 +50,106 @@ export const addToMutationQueue = async (mutation: { type: string; data: any }) 
   }
 };
 
-// キューからミューテーションを取得して実行する関数
-export const processMutationQueue = async () => {
+// 各タイプのミューテーション処理を実行する関数
+const processMutationByType = async (
+  mutation: OfflineMutation, 
+  services: Record<string, any>
+): Promise<boolean> => {
+  const { type, data } = mutation;
+  
+  try {
+    switch (type) {
+      case 'updateProfile':
+        return await services.userService.updateProfile(
+          data.userId,
+          data.data
+        );
+          
+      case 'deleteUser':
+        return await services.userService.deleteUser(data.userId);
+          
+      case 'createMeaningByWordText':
+        const meaning = await services.meaningService.createMeaningByWordText(
+          data.userId,
+          data.wordText,
+          data.meaningText,
+          data.isPublic
+        );
+        return !!meaning;
+          
+      case 'updateMeaning':
+        return await services.meaningService.updateMeaning(
+          data.meaningId,
+          data.userId,
+          data.meaningText,
+          data.isPublic
+        );
+          
+      case 'deleteMeaning':
+        return await services.meaningService.deleteMeaning(
+          data.meaningId,
+          data.userId
+        );
+          
+      case 'createMemoryHookByWordText':
+        const hook = await services.memoryHookService.createMemoryHookByWordText(
+          data.userId,
+          data.wordText,
+          data.hookText,
+          data.isPublic
+        );
+        return !!hook;
+          
+      case 'updateMemoryHook':
+        return await services.memoryHookService.updateMemoryHook(
+          data.hookId,
+          data.userId,
+          data.hookText,
+          data.isPublic
+        );
+          
+      case 'deleteMemoryHook':
+        return await services.memoryHookService.deleteMemoryHook(
+          data.hookId,
+          data.userId
+        );
+          
+      case 'saveToWordbook':
+        const userWord = await services.userWordService.saveToWordbook(
+          data.userId,
+          data.wordId,
+          data.meaningId,
+          data.memoryHookId
+        );
+        return !!userWord;
+          
+      case 'saveToWordbookByText':
+        const userWordByText = await services.userWordService.saveToWordbookByText(
+          data.userId,
+          data.wordText,
+          data.meaningId,
+          data.memoryHookId
+        );
+        return !!userWordByText;
+          
+      case 'removeFromWordbook':
+        return await services.userWordService.removeFromWordbook(
+          data.userId,
+          data.userWordsId
+        );
+          
+      default:
+        console.warn(`Unknown mutation type: ${type}`);
+        return false;
+    }
+  } catch (error) {
+    console.error(`Error processing mutation ${type}:`, error);
+    return false;
+  }
+};
+
+// キューからミューテーションを取得して実行する関数（改善版）
+export const processMutationQueue = async (): Promise<string[]> => {
   try {
     const queueString = await AsyncStorage.getItem(MUTATION_QUEUE_KEY);
     if (!queueString) return [];
@@ -87,132 +162,18 @@ export const processMutationQueue = async () => {
     // 処理に成功したミューテーションのIDリスト
     const processedIds: string[] = [];
     
+    // サービスをまとめる
+    const services = {
+      userService,
+      meaningService,
+      memoryHookService,
+      userWordService
+    };
+    
     // ミューテーションを順番に実行
     for (const mutation of queue) {
       try {
-        console.log(`Processing mutation: ${mutation.type}`, mutation.data);
-        
-        let success = false;
-        
-        // ミューテーションタイプに応じた処理
-        switch (mutation.type) {
-          case 'updateProfile':
-            success = await userService.updateProfile(
-              mutation.data.userId,
-              mutation.data.data
-            );
-            break;
-            
-          case 'deleteUser':
-            success = await userService.deleteUser(mutation.data.userId);
-            break;
-            
-          case 'createMeaning':
-            const meaning = await meaningService.createMeaning(
-              mutation.data.userId,
-              mutation.data.wordId,
-              mutation.data.meaningText,
-              mutation.data.isPublic
-            );
-            success = !!meaning;
-            break;
-            
-          case 'createMeaningByWordText':
-            // 単語テキストから意味を作成
-            const meaningByText = await meaningService.createMeaningByWordText(
-              mutation.data.userId,
-              mutation.data.wordText,
-              mutation.data.meaningText,
-              mutation.data.isPublic
-            );
-            success = !!meaningByText;
-            break;
-            
-          case 'updateMeaning':
-            success = await meaningService.updateMeaning(
-              mutation.data.meaningId,
-              mutation.data.userId,
-              mutation.data.meaningText,
-              mutation.data.isPublic
-            );
-            break;
-            
-          case 'deleteMeaning':
-            success = await meaningService.deleteMeaning(
-              mutation.data.meaningId,
-              mutation.data.userId
-            );
-            break;
-            
-          case 'createMemoryHook':
-            const hook = await memoryHookService.createMemoryHook(
-              mutation.data.userId,
-              mutation.data.wordId,
-              mutation.data.hookText,
-              mutation.data.isPublic
-            );
-            success = !!hook;
-            break;
-            
-          case 'createMemoryHookByWordText':
-            // 単語テキストから記憶hookを作成
-            const hookByText = await memoryHookService.createMemoryHookByWordText(
-              mutation.data.userId,
-              mutation.data.wordText,
-              mutation.data.hookText,
-              mutation.data.isPublic
-            );
-            success = !!hookByText;
-            break;
-            
-          case 'updateMemoryHook':
-            success = await memoryHookService.updateMemoryHook(
-              mutation.data.hookId,
-              mutation.data.userId,
-              mutation.data.hookText,
-              mutation.data.isPublic
-            );
-            break;
-            
-          case 'deleteMemoryHook':
-            success = await memoryHookService.deleteMemoryHook(
-              mutation.data.hookId,
-              mutation.data.userId
-            );
-            break;
-            
-          case 'saveToWordbook':
-            const userWord = await userWordService.saveToWordbook(
-              mutation.data.userId,
-              mutation.data.wordId,
-              mutation.data.meaningId,
-              mutation.data.memoryHookId
-            );
-            success = !!userWord;
-            break;
-            
-          case 'saveToWordbookByText':
-            // 単語テキストから単語帳に保存
-            const userWordByText = await userWordService.saveToWordbookByText(
-              mutation.data.userId,
-              mutation.data.wordText,
-              mutation.data.meaningId,
-              mutation.data.memoryHookId
-            );
-            success = !!userWordByText;
-            break;
-            
-          case 'removeFromWordbook':
-            success = await userWordService.removeFromWordbook(
-              mutation.data.userId,
-              mutation.data.userWordsId
-            );
-            break;
-            
-          default:
-            console.warn(`Unknown mutation type: ${mutation.type}`);
-            success = false;
-        }
+        const success = await processMutationByType(mutation, services);
         
         if (success) {
           // 成功したらIDを記録
@@ -220,15 +181,7 @@ export const processMutationQueue = async () => {
           console.log(`Successfully processed mutation: ${mutation.type}`);
           
           // 関連するキャッシュを無効化
-          if (mutation.type.includes('Meaning')) {
-            queryClient.invalidateQueries({ queryKey: ['meanings'] });
-          } else if (mutation.type.includes('MemoryHook')) {
-            queryClient.invalidateQueries({ queryKey: ['memoryHooks'] });
-          } else if (mutation.type.includes('Wordbook')) {
-            queryClient.invalidateQueries({ queryKey: ['userWords'] });
-          } else if (mutation.type.includes('User')) {
-            queryClient.invalidateQueries({ queryKey: ['users'] });
-          }
+          invalidateRelatedQueries(mutation.type);
         }
       } catch (error) {
         console.error(`Error processing mutation ${mutation.type}:`, error);
@@ -249,55 +202,15 @@ export const processMutationQueue = async () => {
   }
 };
 
-// ネットワーク状態の変化を監視して、オンラインになったらキューを処理する
-export const setupMutationQueueProcessor = () => {
-  // アプリ起動時とネットワーク接続時にキューを処理
-  const handleOnline = async () => {
-    const netInfo = await NetInfo.fetch();
-    if (netInfo.isConnected) {
-      console.log('Network is connected, processing mutation queue');
-      await processMutationQueue();
-    }
-  };
-
-  // 初回実行
-  handleOnline();
-
-  // ネットワーク状態の変化を監視するリスナーを設定
-  const unsubscribe = NetInfo.addEventListener(state => {
-    if (state.isConnected) {
-      handleOnline();
-    }
-  });
-
-  // リスナーの解除関数を返す
-  return unsubscribe;
-};
-
-// オフラインミューテーションのキュー状態を取得
-export const getMutationQueue = async (): Promise<OfflineMutation[]> => {
-  try {
-    const queueString = await AsyncStorage.getItem(MUTATION_QUEUE_KEY);
-    return queueString ? JSON.parse(queueString) : [];
-  } catch (error) {
-    console.error('Error getting mutation queue:', error);
-    return [];
-  }
-};
-
-// キューサイズの取得（UI通知用）
-export const getMutationQueueSize = async (): Promise<number> => {
-  const queue = await getMutationQueue();
-  return queue.length;
-};
-
-// キューのクリア（デバッグ用）
-export const clearMutationQueue = async (): Promise<boolean> => {
-  try {
-    await AsyncStorage.setItem(MUTATION_QUEUE_KEY, JSON.stringify([]));
-    return true;
-  } catch (error) {
-    console.error('Error clearing mutation queue:', error);
-    return false;
+// 関連するキャッシュを無効化する関数
+const invalidateRelatedQueries = (mutationType: MutationType) => {
+  if (mutationType.includes('Meaning')) {
+    queryClient.invalidateQueries({ queryKey: ['meanings'] });
+  } else if (mutationType.includes('MemoryHook')) {
+    queryClient.invalidateQueries({ queryKey: ['memoryHooks'] });
+  } else if (mutationType.includes('Wordbook')) {
+    queryClient.invalidateQueries({ queryKey: ['userWords'] });
+  } else if (mutationType.includes('User')) {
+    queryClient.invalidateQueries({ queryKey: ['users'] });
   }
 };
