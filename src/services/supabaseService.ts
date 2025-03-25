@@ -58,6 +58,8 @@ export const userService = {
   // ユーザーを論理削除
   deleteUser: async (userId: string): Promise<boolean> => {
     try {
+      console.log(`ユーザー削除開始: ${userId}`);
+      
       // ユーザーを削除
       const { error: userError } = await supabase
         .from('users')
@@ -74,18 +76,21 @@ export const userService = {
         .eq('user_id', userId)
         .is('deleted_at', null);
       
+      let meaningCount = 0;
       if (meanings && meanings.length > 0) {
         for (const meaning of meanings) {
           const deletionPrefix = "この意味はユーザによって削除されました（元の意味: ";
           const newMeaning = `${deletionPrefix}${meaning.meaning}）`;
           
-          await supabase
+          const { error } = await supabase
             .from('meanings')
             .update({ 
               deleted_at: new Date().toISOString(), 
               meaning: newMeaning 
             })
             .eq('meaning_id', meaning.meaning_id);
+            
+          if (!error) meaningCount++;
         }
       }
       
@@ -96,27 +101,37 @@ export const userService = {
         .eq('user_id', userId)
         .is('deleted_at', null);
       
+      let hookCount = 0;
       if (hooks && hooks.length > 0) {
         for (const hook of hooks) {
           const deletionPrefix = "この記憶hookはユーザによって削除されました（元の記憶hook: ";
           const newHook = `${deletionPrefix}${hook.memory_hook}）`;
           
-          await supabase
+          const { error } = await supabase
             .from('memory_hooks')
             .update({ 
               deleted_at: new Date().toISOString(), 
               memory_hook: newHook 
             })
             .eq('memory_hook_id', hook.memory_hook_id);
+            
+          if (!error) hookCount++;
         }
       }
       
       // UserWordを更新
-      await supabase
+      const { data: wordUpdate } = await supabase
         .from('user_words')
         .update({ deleted_at: new Date().toISOString() })
         .eq('user_id', userId)
         .is('deleted_at', null);
+      
+      console.log('ユーザー削除完了:', {
+        user: 1,
+        meanings: meaningCount,
+        hooks: hookCount,
+        userWords: wordUpdate?.length || 0
+      });
       
       return true;
     } catch (error) {
@@ -610,37 +625,62 @@ export const meaningService = {
   // 意味を論理削除 - RPC関数を使用
   deleteMeaning: async (meaningId: number, userId: string): Promise<boolean> => {
     try {
+      console.log(`意味削除開始: meaning_id=${meaningId}, user_id=${userId}`);
+      
+      // 認証セッションを確認
+      const { data } = await supabase.auth.getSession();
+      console.log(`セッション確認: ${!!data.session}`);
+      
       // 意味レコードを取得
-      const { data: meaning, error: fetchError } = await supabase
+      const { data: record, error: fetchError } = await supabase
         .from('meanings')
         .select('*')
         .eq('meaning_id', meaningId)
-        .eq('user_id', userId)
         .single();
-        
-      if (fetchError) throw fetchError;
-      if (!meaning) return false;
       
-      // 削除済みかチェック
-      if (meaning.deleted_at !== null) {
-        return true; // 既に削除済み
+      if (fetchError) {
+        console.error('意味取得エラー:', fetchError);
+        return false;
       }
       
-      // 削除メッセージ作成
-      const deletionPrefix = "この意味はユーザによって削除されました（元の意味: ";
-      const newMeaning = `${deletionPrefix}${meaning.meaning}）`;
+      if (!record) {
+        console.warn('対象レコードが見つかりません');
+        return false;
+      }
       
-      // 意味を論理削除
+      // すでに削除済みかどうかをチェック
+      if (record.deleted_at !== null) {
+        console.log('既に削除済みです');
+        return true;
+      }
+      
+      // 削除メッセージ作成（Web版と同じ形式）
+      const deletionPrefix = "この意味はユーザによって削除されました（元の意味: ";
+      const newMeaning = `${deletionPrefix}${record.meaning}）`;
+      
+      console.log(`削除時意味: ${newMeaning}`);
+      
+      // Web版と同じ更新方法
       const { error } = await supabase
         .from('meanings')
-        .update({
+        .update({ 
           deleted_at: new Date().toISOString(),
-          meaning: newMeaning
+          meaning: newMeaning 
         })
-        .eq('meaning_id', meaningId)
-        .eq('user_id', userId);
+        .eq('meaning_id', meaningId);
+      
+      if (error) {
+        console.error('意味更新エラー:', error);
         
-      if (error) throw error;
+        // RLSエラーの場合は追加情報を表示
+        if (error.code === '42501') {
+          console.error('権限エラー: RLSポリシーが正しく設定されていない可能性があります');
+        }
+        
+        return false;
+      }
+      
+      console.log('意味削除成功');
       return true;
     } catch (error) {
       console.error('意味削除エラー:', error);
@@ -813,40 +853,65 @@ export const memoryHookService = {
   // 記憶Hookを論理削除 - RPC関数を使用
   deleteMemoryHook: async (hookId: number, userId: string): Promise<boolean> => {
     try {
+      console.log(`記憶hook削除開始: hook_id=${hookId}, user_id=${userId}`);
+      
+      // 認証セッションを確認
+      const { data } = await supabase.auth.getSession();
+      console.log(`セッション確認: ${!!data.session}`);
+      
       // 記憶hookレコードを取得
-      const { data: hook, error: fetchError } = await supabase
+      const { data: record, error: fetchError } = await supabase
         .from('memory_hooks')
         .select('*')
         .eq('memory_hook_id', hookId)
-        .eq('user_id', userId)
         .single();
-        
-      if (fetchError) throw fetchError;
-      if (!hook) return false;
       
-      // 削除済みかチェック
-      if (hook.deleted_at !== null) {
-        return true; // 既に削除済み
+      if (fetchError) {
+        console.error('記憶hook取得エラー:', fetchError);
+        return false;
       }
       
-      // 削除メッセージ作成
-      const deletionPrefix = "この記憶hookはユーザによって削除されました（元の記憶hook: ";
-      const newHook = `${deletionPrefix}${hook.memory_hook}）`;
+      if (!record) {
+        console.warn('対象レコードが見つかりません');
+        return false;
+      }
       
-      // 記憶hookを論理削除
+      // すでに削除済みかどうかをチェック
+      if (record.deleted_at !== null) {
+        console.log('既に削除済みです');
+        return true;
+      }
+      
+      // 削除メッセージ作成（Web版と同じ形式）
+      const deletionPrefix = "この記憶hookはユーザによって削除されました（元の記憶hook: ";
+      const newHook = `${deletionPrefix}${record.memory_hook}）`;
+      
+      console.log(`削除時記憶hook: ${newHook}`);
+      
+      // Web版と同じ更新方法
       const { error } = await supabase
         .from('memory_hooks')
-        .update({
+        .update({ 
           deleted_at: new Date().toISOString(),
-          memory_hook: newHook
+          memory_hook: newHook 
         })
-        .eq('memory_hook_id', hookId)
-        .eq('user_id', userId);
+        .eq('memory_hook_id', hookId);
+      
+      if (error) {
+        console.error('記憶hook更新エラー:', error);
         
-      if (error) throw error;
+        // RLSエラーの場合は追加情報を表示
+        if (error.code === '42501') {
+          console.error('権限エラー: RLSポリシーが正しく設定されていない可能性があります');
+        }
+        
+        return false;
+      }
+      
+      console.log('記憶hook削除成功');
       return true;
     } catch (error) {
-      console.error('記憶Hook削除エラー:', error);
+      console.error('記憶hook削除エラー:', error);
       return false;
     }
   },

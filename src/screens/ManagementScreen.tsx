@@ -53,7 +53,7 @@ const ManagementScreen = () => {
   };
   
   // 意味の削除
-  const handleDeleteMeaning = (meaningId: number, wordId: number) => {
+  const handleDeleteMeaning = async (meaningId: number, wordId: number) => {
     Alert.alert(
       '削除確認',
       'この意味を削除しますか？',
@@ -68,12 +68,34 @@ const ManagementScreen = () => {
           onPress: async () => {
             try {
               setDeleteTarget(meaningId);
-              await deleteMeaning.mutateAsync({ meaningId, wordId });
-              Alert.alert('成功', '意味を削除しました');
-              refetchMeanings();
+              console.log(`意味削除リクエスト: meaningId=${meaningId}, wordId=${wordId}`);
+              
+              // ユーザーIDの確認
+              if (!user?.user_id) {
+                throw new Error('ユーザー情報がありません');
+              }
+              
+              const success = await deleteMeaning.mutateAsync({
+                meaningId,
+                wordId
+              });
+              
+              if (success) {
+                toast.success('削除しました！');
+                refetchMeanings();
+              } else {
+                throw new Error('削除処理に失敗しました');
+              }
             } catch (error) {
               console.error('意味削除エラー:', error);
-              Alert.alert('エラー', '削除に失敗しました。時間をおいて再度お試しください。');
+              
+              // エラーメッセージを作成
+              let errorMessage = '削除に失敗しました。時間をおいて再度お試しください。';
+              if (error instanceof Error) {
+                errorMessage = error.message;
+              }
+              
+              Alert.alert('エラー', errorMessage);
             } finally {
               setDeleteTarget(null);
             }
@@ -89,7 +111,7 @@ const ManagementScreen = () => {
   };
   
   // 記憶Hookの削除
-  const handleDeleteMemoryHook = (hookId: number, wordId: number) => {
+  const handleDeleteMemoryHook = async (hookId: number, wordId: number) => {
     Alert.alert(
       '削除確認',
       'この記憶Hookを削除しますか？',
@@ -104,12 +126,34 @@ const ManagementScreen = () => {
           onPress: async () => {
             try {
               setDeleteTarget(hookId);
-              await deleteMemoryHook.mutateAsync({ hookId, wordId });
-              Alert.alert('成功', '記憶Hookを削除しました');
-              refetchHooks();
+              console.log(`記憶Hook削除リクエスト: hookId=${hookId}, wordId=${wordId}`);
+              
+              // ユーザーIDの確認
+              if (!user?.user_id) {
+                throw new Error('ユーザー情報がありません');
+              }
+              
+              const success = await deleteMemoryHook.mutateAsync({
+                hookId,
+                wordId
+              });
+              
+              if (success) {
+                toast.success('削除しました！');
+                refetchHooks();
+              } else {
+                throw new Error('削除処理に失敗しました');
+              }
             } catch (error) {
               console.error('記憶Hook削除エラー:', error);
-              Alert.alert('エラー', '削除に失敗しました。時間をおいて再度お試しください。');
+              
+              // エラーメッセージを作成
+              let errorMessage = '削除に失敗しました。時間をおいて再度お試しください。';
+              if (error instanceof Error) {
+                errorMessage = error.message;
+              }
+              
+              Alert.alert('エラー', errorMessage);
             } finally {
               setDeleteTarget(null);
             }
