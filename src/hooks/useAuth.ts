@@ -108,8 +108,15 @@ export const useAuth = () => {
         // セッションチェック前に少し待機して認証処理が完了するのを待つ
         await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // セッション状態を確認
+        // セッション状態を確認（削除状態も含めて更新される）
         await checkSession();
+        
+        // セッション確認後に削除状態をチェック
+        const currentState = await getDebugInfo();
+        if (currentState.auth.isDeleted) {
+          console.log('[AUTH] 削除済みアカウントを検出しました');
+          // 削除済みアカウントは AppNavigator で処理される
+        }
         
         return true;
       } else {

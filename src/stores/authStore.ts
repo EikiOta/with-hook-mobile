@@ -37,6 +37,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const session = await getSession();
       const authUser = await getCurrentUser();
       
+      console.log("Session check:", !!session, !!authUser);
+      
       if (authUser && session) {
         try {
           // ユーザーのSupabaseデータを取得
@@ -55,6 +57,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           
           // 論理削除されているかチェック
           const isDeleted = data?.deleted_at !== null;
+          console.log("User deleted status:", isDeleted, data?.deleted_at);
           
           // ユーザー情報を保存
           try {
@@ -127,12 +130,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const user = get().user;
       if (!user) return false;
       
+      console.log("アカウント復旧を開始:", user.user_id);
+      
       // ユーザーの論理削除フラグを解除
       const success = await userService.recoverUser(user.user_id);
       
       if (success) {
+        console.log("アカウント復旧成功、最新データを取得");
         // 最新のユーザーデータを取得
         await get().checkSession();
+      } else {
+        console.error("アカウント復旧失敗");
       }
       
       return success;

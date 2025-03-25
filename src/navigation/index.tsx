@@ -1,3 +1,4 @@
+// src/navigation/index.tsx
 import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
@@ -89,8 +90,14 @@ const MainTabsScreen = () => {
 
 // 認証スタックナビゲーター
 const AuthNavigator = () => {
+  // isDeletedに応じて初期ルートを設定（重要な修正点）
+  const { isDeleted } = useAuthStore();
+  
   return (
-    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+    <AuthStack.Navigator 
+      screenOptions={{ headerShown: false }}
+      initialRouteName={isDeleted ? "RecoverAccount" : "Login"}
+    >
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="RecoverAccount" component={RecoverAccountScreen} />
     </AuthStack.Navigator>
@@ -145,15 +152,15 @@ const AppNavigator = () => {
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         {isAuthenticated ? (
           isDeleted ? (
-            // 論理削除済みユーザーの場合
-            <RootStack.Screen name="Auth" component={AuthNavigator} initialParams={{ screen: 'RecoverAccount' }} />
+            // 論理削除済みユーザーの場合、直接RecoverAccountScreenに遷移（重要な修正点）
+            <RootStack.Screen name="RecoverAccount" component={RecoverAccountScreen} />
           ) : (
             // 認証済みかつ有効なユーザーの場合
             <RootStack.Screen name="Main" component={MainNavigator} />
           )
         ) : (
           // 未認証ユーザーの場合
-          <RootStack.Screen name="Auth" component={AuthNavigator} initialParams={{ screen: 'Login' }} />
+          <RootStack.Screen name="Auth" component={AuthNavigator} />
         )}
       </RootStack.Navigator>
     </NavigationContainer>

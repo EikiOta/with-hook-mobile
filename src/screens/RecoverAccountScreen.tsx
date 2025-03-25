@@ -28,7 +28,19 @@ const RecoverAccountScreen = () => {
       const success = await recoverAccount();
       
       if (success) {
-        Alert.alert('成功', 'アカウントを復旧しました。');
+        Alert.alert('成功', 'アカウントを復旧しました。', [
+          {
+            text: 'OK',
+            onPress: () => {
+              // アカウント復旧成功後はホーム画面に遷移
+              // @ts-ignore - ナビゲーションタイプエラーを無視
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Main' }],
+              });
+            }
+          }
+        ]);
       } else {
         throw new Error('復旧に失敗しました');
       }

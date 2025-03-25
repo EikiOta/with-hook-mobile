@@ -128,13 +128,20 @@ export const userService = {
   // ユーザーを復旧
   recoverUser: async (userId: string): Promise<boolean> => {
     try {
+      console.log("Supabaseで復旧処理を開始:", userId);
+      
       // ユーザーの論理削除を解除
       const { error: userError } = await supabase
         .from('users')
         .update({ deleted_at: null })
         .eq('user_id', userId);
       
-      if (userError) throw userError;
+      if (userError) {
+        console.error("ユーザー復旧エラー:", userError);
+        throw userError;
+      }
+      
+      console.log("ユーザーのdeleted_atをnullに設定成功");
       
       // 関連データも復旧
       // 意味を復旧
@@ -144,6 +151,9 @@ export const userService = {
         .eq('user_id', userId)
         .not('deleted_at', 'is', null);
       
+      console.log(`復旧対象の意味: ${meanings?.length || 0}件`);
+      
+      let meaningCount = 0;
       if (meanings && meanings.length > 0) {
         for (const meaning of meanings) {
           // 削除メッセージから元のテキストを抽出
@@ -156,15 +166,23 @@ export const userService = {
             );
           }
           
-          await supabase
+          const { error } = await supabase
             .from('meanings')
             .update({ 
               deleted_at: null,
               meaning: originalText
             })
             .eq('meaning_id', meaning.meaning_id);
+            
+          if (error) {
+            console.warn("意味の復旧エラー:", error);
+          } else {
+            meaningCount++;
+          }
         }
       }
+      
+      console.log(`意味の復旧完了: ${meaningCount}/${meanings?.length || 0}件`);
       
       // 記憶hookを復旧
       const { data: hooks } = await supabase
@@ -173,6 +191,9 @@ export const userService = {
         .eq('user_id', userId)
         .not('deleted_at', 'is', null);
       
+      console.log(`復旧対象の記憶hook: ${hooks?.length || 0}件`);
+      
+      let hookCount = 0;
       if (hooks && hooks.length > 0) {
         for (const hook of hooks) {
           // 削除メッセージから元のテキストを抽出
@@ -185,22 +206,43 @@ export const userService = {
             );
           }
           
-          await supabase
+          const { error } = await supabase
             .from('memory_hooks')
             .update({ 
               deleted_at: null,
               memory_hook: originalText
             })
             .eq('memory_hook_id', hook.memory_hook_id);
+            
+          if (error) {
+            console.warn("記憶hookの復旧エラー:", error);
+          } else {
+            hookCount++;
+          }
         }
       }
       
+      console.log(`記憶hookの復旧完了: ${hookCount}/${hooks?.length || 0}件`);
+      
       // UserWordを復旧
-      await supabase
+      const { data: userWords, error: userWordError } = await supabase
         .from('user_words')
         .update({ deleted_at: null })
         .eq('user_id', userId)
         .not('deleted_at', 'is', null);
+        
+      if (userWordError) {
+        console.warn("ユーザー単語帳の復旧エラー:", userWordError);
+      }
+      
+      console.log(`ユーザー単語帳の復旧完了: ${userWords?.length || 0}件`);
+      
+      console.log("復旧完了:", {
+        user: 1,
+        meanings: meaningCount,
+        hooks: hookCount,
+        userWords: userWords?.length || 0
+      });
       
       return true;
     } catch (error) {
